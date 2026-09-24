@@ -18,6 +18,8 @@ import {
   Plus,
   Trash2,
   RotateCcw,
+  X,
+  PlusCircle,
 } from "lucide-react";
 import {
   generateReportApi,
@@ -354,6 +356,100 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
       setStatusMessage({ type: "error", text: String(errorMsg) });
     } finally {
       setIsUpdatingImage(false);
+    }
+  };
+
+  // Modal Thêm mục công việc mới (mục 6, 7...) vào Kế hoạch
+  const [isAddSectionModalOpen, setIsAddSectionModalOpen] = useState(false);
+  const [modalTodoTitle, setModalTodoTitle] = useState("");
+  const [modalTodoNote, setModalTodoNote] = useState("");
+  const [isSubmittingModal, setIsSubmittingModal] = useState(false);
+
+  // Helper tính toán các đầu việc hiện có trong văn bản
+  const getSectionNumbersFromText = (text: string): number[] => {
+    const matches = (text || "").match(/^(\d+)[\.\:]/gm) || [];
+    const nums = matches
+      .map((m) => parseInt(m.replace(/\D/g, ""), 10))
+      .filter((n) => !isNaN(n));
+    return nums;
+  };
+
+  const getNextSectionNumber = (): number => {
+    const nums = getSectionNumbersFromText(finalText);
+    if (nums.length === 0) return 6;
+    return Math.max(...nums) + 1;
+  };
+
+  const nextSectionNum = getNextSectionNumber();
+  const currentTotalSections = Math.max(5, getSectionNumbersFromText(finalText).length);
+
+  const handleOpenAddSectionModal = () => {
+    setModalTodoTitle("");
+    setModalTodoNote("");
+    setIsAddSectionModalOpen(true);
+  };
+
+  const handleConfirmAddSection = async () => {
+    if (!modalTodoTitle.trim() && !modalTodoNote.trim()) {
+      setStatusMessage({
+        type: "error",
+        text: "Vui lòng nhập ít nhất tiêu đề hoặc nội dung chi tiết công việc!",
+      });
+      return;
+    }
+
+    setIsSubmittingModal(true);
+    setStatusMessage(null);
+
+    try {
+      const nextNum = getNextSectionNumber();
+      const title = modalTodoTitle.trim() || `Công việc #${nextNum}`;
+
+      const rawLines = modalTodoNote
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      let bulletContent = "";
+      if (rawLines.length > 0) {
+        bulletContent = rawLines
+          .map((l) => `• ${l.replace(/^[\-\•\*\+\>\–\—\d+\.]\s*/, "")}`)
+          .join("\n");
+      } else {
+        bulletContent = `• ${title}`;
+      }
+
+      const newSectionBlock = `\n\n${nextNum}. ${title}\n${bulletContent}`;
+      const updatedText = (
+        finalText.trim() ? finalText.trim() + newSectionBlock : newSectionBlock.trim()
+      ).trim();
+
+      setFinalText(updatedText);
+
+      // Tự động render lại ảnh ngay lập tức
+      const imgRes = await renderLiveImageApi({
+        content: updatedText,
+        title: currentCaption,
+      });
+
+      setPreviewImageUrl(imgRes.image_data_url);
+      setPreviewSource("ai");
+      setIsAddSectionModalOpen(false);
+      setModalTodoTitle("");
+      setModalTodoNote("");
+      setMobileTab("preview");
+
+      setStatusMessage({
+        type: "success",
+        text: `Đã thêm mục ${nextNum} ("${title}") vào kế hoạch và tự động cập nhật ảnh thẻ!`,
+      });
+      setTimeout(() => setStatusMessage(null), 4000);
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.detail || err?.message || "Lỗi khi cập nhật ảnh cho mục mới";
+      setStatusMessage({ type: "error", text: String(errorMsg) });
+    } finally {
+      setIsSubmittingModal(false);
     }
   };
 
@@ -783,69 +879,28 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
                 )}
               </button>
 
-              {/* TO-DO LIST BỔ SUNG TRONG CHẾ ĐỘ KẾ HOẠCH (KỂ CẢ KHI DÙNG AI) */}
+              {/* NÚT THÊM ĐẦU VIỆC BỔ SUNG TRONG KẾ HOẠCH BẰNG POP-UP */}
               {mode === "plan" && (
-                <div className="flex flex-col gap-2.5 pt-2 border-t border-white/[0.08]">
+                <div className="flex flex-col gap-2 pt-2 border-t border-white/[0.08]">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-blue-300 flex items-center gap-1.5">
-                      <ListPlus className="h-3.5 w-3.5 text-blue-400" />
-                      <span>Thêm công việc ngoài 5 mục (To-do list):</span>
+                      <Sparkles className="h-3.5 w-3.5 text-blue-400" />
+                      <span>Thêm đầu việc ngoài 5 mục chuẩn:</span>
                     </span>
-                    <span className="text-[10px] text-neutral-400">
-                      {extraTodos.length > 0 ? `${extraTodos.length} việc đã thêm` : "Tùy chọn"}
-                    </span>
+                    {currentTotalSections > 5 && (
+                      <span className="text-[10px] text-cyan-400 font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20">
+                        Đang có {currentTotalSections} mục
+                      </span>
+                    )}
                   </div>
-
-                  {extraTodos.map((todo, idx) => {
-                    const itemNum = 6 + idx;
-                    return (
-                      <div
-                        key={todo.id}
-                        className="flex flex-col gap-2 p-2.5 rounded-xl bg-black/40 border border-white/[0.08]"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-blue-400 flex items-center gap-1.5">
-                            <span className="h-5 w-5 rounded bg-blue-500/20 text-blue-300 flex items-center justify-center text-[11px] font-bold">
-                              {itemNum}
-                            </span>
-                            <span>Công việc #{itemNum}:</span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveTodo(todo.id)}
-                            className="text-neutral-500 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
-                            title="Xóa công việc này"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-
-                        <input
-                          type="text"
-                          value={todo.title}
-                          onChange={(e) => handleUpdateTodo(todo.id, "title", e.target.value)}
-                          placeholder={`Tiêu đề việc #${itemNum} (vd: Đăng bài nhóm sỉ, Kiểm kho...)`}
-                          className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-blue-500 placeholder:text-neutral-500 placeholder:text-xs"
-                        />
-
-                        <textarea
-                          rows={2}
-                          value={todo.note}
-                          onChange={(e) => handleUpdateTodo(todo.id, "note", e.target.value)}
-                          placeholder="Ghi chú chi tiết cho việc này..."
-                          className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-blue-500 placeholder:text-neutral-500 placeholder:text-xs leading-relaxed resize-y"
-                        />
-                      </div>
-                    );
-                  })}
 
                   <button
                     type="button"
-                    onClick={handleAddTodo}
-                    className="w-full py-2.5 px-4 border-2 border-dashed border-white/20 hover:border-blue-500/50 hover:bg-blue-500/5 text-neutral-400 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    onClick={handleOpenAddSectionModal}
+                    className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600/15 via-indigo-600/15 to-purple-600/15 hover:from-blue-600/25 hover:to-purple-600/25 text-blue-200 border border-blue-500/30 hover:border-blue-400/50 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer group"
                   >
-                    <Plus className="h-4 w-4 text-blue-400" />
-                    <span>+ Thêm việc mới vào kế hoạch (To-do list)</span>
+                    <PlusCircle className="h-4 w-4 text-blue-400 group-hover:scale-110 transition-transform" />
+                    <span>+ Thêm đầu việc #{nextSectionNum} vào kế hoạch (Mở Pop-up)</span>
                   </button>
                 </div>
               )}
@@ -1010,30 +1065,43 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
 
           {/* VĂN BẢN CHUẨN HÓA CUỐI CÙNG (DÙNG ĐỂ GỬI TELEGRAM) */}
           <div className="flex flex-col gap-1.5 pt-2 border-t border-white/[0.06]">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5">
                 <FileText className="h-3.5 w-3.5 text-blue-400" />
-                <span>Nội dung văn bản chuẩn bị gửi (5 mục):</span>
+                <span>Nội dung văn bản chuẩn bị gửi ({currentTotalSections} mục):</span>
               </label>
-              {finalText && (
-                <button
-                  type="button"
-                  onClick={handleCopyFinalText}
-                  className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="h-3 w-3 text-emerald-400" />
-                      <span className="text-emerald-400">Đã copy</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-3 w-3" />
-                      <span>Copy văn bản</span>
-                    </>
-                  )}
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {mode === "plan" && (
+                  <button
+                    type="button"
+                    onClick={handleOpenAddSectionModal}
+                    title="Mở popup thêm công việc mới vào văn bản và tự động cập nhật ảnh"
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-300 hover:text-white bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 rounded-lg transition-all cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5 text-blue-400" />
+                    <span>Thêm mục #{nextSectionNum}</span>
+                  </button>
+                )}
+                {finalText && (
+                  <button
+                    type="button"
+                    onClick={handleCopyFinalText}
+                    className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="h-3 w-3 text-emerald-400" />
+                        <span className="text-emerald-400">Đã copy</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3 w-3" />
+                        <span>Copy văn bản</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
 
             <textarea
@@ -1052,26 +1120,38 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
             {finalText && (
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1 text-[11px]">
                 <span className="text-neutral-400">
-                  💡 Bạn có thể trực tiếp sửa văn bản ở trên.
+                  💡 Bạn có thể trực tiếp sửa văn bản ở trên hoặc bấm nút thêm mục.
                 </span>
-                <button
-                  type="button"
-                  onClick={handleUpdateImageFromFinalText}
-                  disabled={isUpdatingImage}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-lg font-medium transition-all cursor-pointer shrink-0"
-                >
-                  {isUpdatingImage ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Đang cập nhật ảnh...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-                      <span>Cập nhật ảnh theo văn bản vừa sửa</span>
-                    </>
+                <div className="flex items-center gap-2">
+                  {mode === "plan" && (
+                    <button
+                      type="button"
+                      onClick={handleOpenAddSectionModal}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-lg font-medium transition-all cursor-pointer shrink-0"
+                    >
+                      <PlusCircle className="h-3.5 w-3.5 text-blue-400" />
+                      <span>+ Thêm mục #{nextSectionNum}</span>
+                    </button>
                   )}
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleUpdateImageFromFinalText}
+                    disabled={isUpdatingImage}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-lg font-medium transition-all cursor-pointer shrink-0"
+                  >
+                    {isUpdatingImage ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Đang cập nhật ảnh...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5 text-blue-400" />
+                        <span>Cập nhật ảnh theo văn bản vừa sửa</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -1283,6 +1363,108 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
           </div>
         </div>
       </div>
+
+      {/* POP-UP MODAL THÊM ĐẦU VIỆC (MỤC 6, 7...) VÀO KẾ HOẠCH */}
+      {isAddSectionModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setIsAddSectionModalOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-lg bg-[#141622] border border-blue-500/30 rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 text-left select-text"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
+                  <PlusCircle className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white tracking-tight">
+                    Thêm công việc #{nextSectionNum} vào kế hoạch
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Tự động thêm vào ô văn bản & cập nhật lại ảnh xem trước ngay lập tức
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddSectionModalOpen(false)}
+                className="text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-white/[0.06] transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex flex-col gap-3.5">
+              {/* Tiêu đề mục */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-neutral-200">
+                  Tiêu đề mục #{nextSectionNum}:
+                </label>
+                <input
+                  type="text"
+                  value={modalTodoTitle}
+                  onChange={(e) => setModalTodoTitle(e.target.value)}
+                  placeholder="Ví dụ: Đăng bài nhóm sỉ Zalo, Kiểm kho xuất hàng, Thu công nợ..."
+                  autoFocus
+                  className="w-full bg-black/50 border border-white/[0.12] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 placeholder:text-neutral-500"
+                />
+              </div>
+
+              {/* Chi tiết công việc / Ghi chú */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-neutral-200">
+                  Nội dung chi tiết / Ghi chú (xuống dòng như Notes):
+                </label>
+                <textarea
+                  rows={4}
+                  value={modalTodoNote}
+                  onChange={(e) => setModalTodoNote(e.target.value)}
+                  placeholder={"Ví dụ:\n- Đăng bài vào 3 nhóm sỉ Zalo đầu giờ sáng\n- Cập nhật bảng giá vải đũi mới\n- Gửi phản hồi cho anh Nam"}
+                  className="w-full bg-black/50 border border-white/[0.12] rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-blue-500 placeholder:text-neutral-500 resize-y leading-relaxed"
+                />
+                <span className="text-[10px] text-neutral-500">
+                  Mỗi dòng sẽ tự động biến thành 1 gạch đầu dòng (•) trong văn bản và thẻ ảnh.
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/[0.08]">
+              <button
+                type="button"
+                onClick={() => setIsAddSectionModalOpen(false)}
+                disabled={isSubmittingModal}
+                className="px-4 py-2.5 rounded-xl text-xs font-medium text-neutral-300 hover:text-white bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] transition-colors cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAddSection}
+                disabled={isSubmittingModal || (!modalTodoTitle.trim() && !modalTodoNote.trim())}
+                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-lg shadow-blue-500/25 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmittingModal ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Đang cập nhật ảnh...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    <span>Xác nhận & Cập nhật ảnh ngay</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
