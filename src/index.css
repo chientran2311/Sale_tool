@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors extracted from Attio */
+  --color-primary: #266df0;
+  --color-primary-hover: #1b57c4;
+  --color-brand: #9b69ff;
+  --color-brand-light: #b48eff;
+  --color-mint: #e0fced;
+  --color-mint-text: #34d399;
+
+  /* Surfaces & Backgrounds */
+  --color-background: #090a0d;
+  --color-surface: #13141b;
+  --color-surface-hover: #191b24;
+  --color-surface-subtle: #0e0f14;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.16);
+  --color-border-active: #266df0;
+
+  /* Typography Colors */
+  --color-foreground: #f3f4f6;
+  --color-muted: #9ca3af;
+  --color-subtle: #6b7280;
+
+  /* Fonts */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Radius Scale */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-subtle: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-tactile: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-glow-blue: 0 0 24px -4px rgba(38, 109, 240, 0.35);
+  --shadow-glow-purple: 0 0 24px -4px rgba(155, 105, 255, 0.35);
+}
+
+:root {
+  --bg-app: #090a0d;
+  --bg-surface: #13141b;
+  --bg-surface-hover: #191b24;
+  --bg-subtle: #0e0f14;
+  --border-app: rgba(255, 255, 255, 0.08);
+  --border-app-hover: rgba(255, 255, 255, 0.16);
+  --color-primary: #266df0;
+  --color-brand: #9b69ff;
+  color-scheme: dark;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  background-color: #090a0d;
+  color: #f3f4f6;
+  font-family: var(--font-sans);
+  font-feature-settings: "ss03" 1, "cv02" 1, "cv03" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  touch-action: manipulation;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* Attio Signature Utilities */
+.attio-card {
+  background-color: #13141b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.attio-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.attio-card-interactive {
+  background-color: #13141b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.attio-card-interactive:hover {
+  background-color: #191b24;
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.attio-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: #266df0;
+  color: #ffffff;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.attio-btn-primary:hover {
+  background-color: #1b57c4;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 2px 4px rgba(38, 109, 240, 0.25);
+}
+
+.attio-btn-primary:active {
+  transform: scale(0.98);
+}
+
+.attio-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #f3f4f6;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.attio-btn-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.attio-btn-secondary:active {
+  transform: scale(0.98);
+}
+
+.attio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 9999px;
+  line-height: 1.2;
+}
+
+.attio-badge-mint {
+  background-color: rgba(52, 211, 153, 0.1);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.attio-badge-brand {
+  background-color: rgba(155, 105, 255, 0.1);
+  color: #c084fc;
+  border: 1px solid rgba(155, 105, 255, 0.25);
+}
+
+.attio-badge-neutral {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #9ca3af;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}

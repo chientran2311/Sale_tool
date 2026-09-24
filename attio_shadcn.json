@@ -1,0 +1,32 @@
+/* shadcn/ui theme, measured from https://attio.com/.
+ * Written by dembrandt 0.34.2.
+ * 8 of 18 slots were observed on the page.
+ * Not observed, so left to shadcn defaults: popover, popover-foreground, secondary-foreground, muted, muted-foreground, accent, accent-foreground, destructive, input, ring.
+ */
+
+:root {
+  --background: oklch(100% 0 0);
+  --foreground: oklch(23.0503% 0.00413 264.487);
+  --card: oklch(96.6728% 0.03527 162.375);
+  --card-foreground: oklch(0% 0 0);
+  --primary: oklch(56.9984% 0.20965 261.371);
+  --primary-foreground: oklch(100% 0 0);
+  --secondary: oklch(100% 0 0);
+  --border: oklch(95.1933% 0.00289 264.542);
+  --radius: 8px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-border: var(--border);
+  --radius-sm: max(0px, calc(var(--radius) - 4px));
+  --radius-md: max(0px, calc(var(--radius) - 2px));
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}

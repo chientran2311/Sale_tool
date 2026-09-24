@@ -1,0 +1,80 @@
+/*
+ * Tailwind v4 theme extracted from https://attio.com/ on 2026-09-20T15:01:20.759Z
+ * dembrandt v0.34.2
+ *
+ * Observed values only. Every token below was measured on the page; no
+ * shades, states or scale steps were generated. Tailwind defaults still
+ * apply for anything not listed here, so extend rather than replace.
+ *
+ * This is a draft to check, not a source of truth. Each token carries the
+ * evidence behind it; read down the counts and drop what the page only did
+ * once before you build on this file.
+ */
+@import "tailwindcss";
+
+@theme {
+  /* Colors */
+  --color-primary: #266df0;    /* semantic */
+  --color-secondary: #ffffff;  /* semantic */
+  --color-text: #1c1d1f;       /* semantic */
+  --color-brand-1: #9b69ff;    /* palette, 10x, medium confidence */
+
+  /* Typography */
+  --font-interdisplay: interDisplay, "interDisplay Fallback";          /* heading-2 */
+  --font-inter: inter, "inter Fallback";                               /* body */
+  --font-jetbrains-mono: "JetBrains Mono", "JetBrains Mono Fallback";  /* mono */
+  --text-heading-2: 96px;                                              /* heading-2 */
+  --text-heading-2--line-height: 1;
+  --text-display: 73.5964px;                                           /* display */
+  --text-display--line-height: 0.95;
+  --text-text: 38.4px;                                                 /* text */
+  --text-text--line-height: 1;
+  --text-heading-3: 24px;                                              /* heading-3 */
+  --text-heading-3--line-height: 1.15;
+  --text-body: 20px;                                                   /* body */
+  --text-body--line-height: 1.2;
+  --text-ui: 15px;                                                     /* ui */
+  --text-ui--line-height: 1.47;
+  --text-link: 14px;                                                   /* link */
+  --text-link--line-height: 1.43;
+  --text-mono: 13px;                                                   /* mono */
+  --text-mono--line-height: 1.54;
+  --text-caption: 12px;                                                /* caption */
+  --text-caption--line-height: 1.33;
+  --font-weight-semibold: 600;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --font-weight-light: 300;
+  --tracking-heading-2: -2.304px;                                      /* heading-2 */
+  --tracking-display: -1.9516px;                                       /* display */
+  --tracking-text: -0.32px;                                            /* text */
+  --tracking-heading-3: -0.24px;                                       /* heading-3 */
+  --tracking-body: -0.2px;                                             /* body */
+  --tracking-ui: -0.16px;                                              /* ui */
+  --tracking-link: -0.07px;                                            /* link */
+  --tracking-mono: -0.13px;                                            /* mono */
+  --tracking-caption: 0.72px;                                          /* caption */
+
+  /* Spacing */
+  --spacing: 4px;  /* 4px scale */
+
+  /* Radius */
+  --radius-sm: 6px;       /* 36x */
+  --radius-md: 8px;       /* 174x */
+  --radius-lg: 10px;      /* 70x */
+  --radius-xl: 12px;      /* 83x */
+  --radius-full: 9999px;  /* 121x */
+
+  /* Shadows */
+  --shadow-sm: lab(99.9987 0.0337958 0.000309944) 0px 0px 0px 0.5px;
+  --shadow-md: rgba(255, 255, 255, 0.1) 0.2px 0.2px 2px 0px inset, rgba(0, 0, 0, 0.25) 0px 1.5px 1.5px 0px;
+  --shadow-lg: rgba(0, 0, 0, 0.04) 0px 1px 3px 0px, rgba(28, 40, 64, 0.18) 0px 0px 2px 0px;
+  --shadow-xl: rgba(28, 40, 64, 0.18) 0px 0px 2px 0px, rgba(0, 0, 0, 0.04) 0px 1px 3px 0px;
+
+  /* Breakpoints */
+  --breakpoint-sm: 360px;
+  --breakpoint-md: 480px;
+  --breakpoint-lg: 576px;
+  --breakpoint-xl: 600px;
+  --breakpoint-2xl: 640px;
+}

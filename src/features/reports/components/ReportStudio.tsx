@@ -1,0 +1,994 @@
+import { useState, useEffect } from "react";
+import {
+  Calendar,
+  FileText,
+  Sparkles,
+  Send,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
+  Check,
+  Download,
+  ClipboardPaste,
+  Eye,
+  Bot,
+  ListPlus,
+  PenLine,
+  Plus,
+  Trash2,
+  RotateCcw,
+} from "lucide-react";
+import {
+  generateReportApi,
+  sendReportApi,
+  renderLiveImageApi,
+  type ReportMode,
+} from "../api/reportApi";
+import { cn } from "@/lib/utils";
+
+interface TodoItem {
+  id: string;
+  title: string;
+  note: string;
+}
+
+interface ReportDraft {
+  mode: ReportMode;
+  reportDate: string;
+  inputMethod: "ai_auto" | "manual_5";
+  rawInput: string;
+  manualSections: {
+    chotDon: string;
+    gapMat: string;
+    guiMau: string;
+    lienHe: string;
+    sec5: string;
+  };
+  extraTodos: TodoItem[];
+  finalText: string;
+  previewImageUrl: string;
+  previewSource: "ai" | "manual" | "none";
+}
+
+const DRAFT_STORAGE_KEY = "sale_tool_report_draft_v2";
+
+const loadSavedDraft = (): Partial<ReportDraft> | null => {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+};
+
+interface ReportStudioProps {
+  initialTranscriptText?: string;
+}
+
+export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) {
+  const initialDraft = loadSavedDraft();
+
+  // 1. Chế độ & Ngày tháng
+  const [mode, setMode] = useState<ReportMode>(() => initialDraft?.mode || "report");
+  const [reportDate, setReportDate] = useState<string>(() => {
+    if (initialDraft?.reportDate) return initialDraft.reportDate;
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  });
+
+  // Phương thức nhập: "ai_auto" (Nhập thô & AI tóm tắt) vs "manual_5" (Tự điền 5 ô)
+  const [inputMethod, setInputMethod] = useState<"ai_auto" | "manual_5">(
+    () => initialDraft?.inputMethod || "ai_auto"
+  );
+
+  // Tab hiển thị trên mobile (< lg): "edit" (Soạn thảo) vs "preview" (Xem ảnh & Gửi)
+  const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
+
+  // Cách 1: Người dùng nhập thô (văn bản tự do, cực dài, bóc băng...)
+  const [rawInput, setRawInput] = useState<string>(
+    () => initialDraft?.rawInput ?? initialTranscriptText
+  );
+
+  // Cách 2: Tự nhập các mục thủ công (mục 5 đổi theo chế độ)
+  const [manualSections, setManualSections] = useState(
+    () =>
+      initialDraft?.manualSections || {
+        chotDon: "",
+        gapMat: "",
+        guiMau: "",
+        lienHe: "",
+        sec5: "",
+      }
+  );
+
+  // Danh sách công việc To-do bổ sung (chỉ dành cho chế độ "Kế hoạch")
+  const [extraTodos, setExtraTodos] = useState<TodoItem[]>(
+    () => initialDraft?.extraTodos || []
+  );
+
+  // Bản văn bản chuẩn hóa cuối cùng (dùng để gửi Telegram và copy)
+  const [finalText, setFinalText] = useState<string>(() => initialDraft?.finalText || "");
+
+  // Ảnh hiển thị (Preview Image) - Giữ cố định sau khi tạo, KHÔNG BAO GIỜ bị reset
+  const [previewImageUrl, setPreviewImageUrl] = useState<string>(
+    () => initialDraft?.previewImageUrl || ""
+  );
+  const [previewSource, setPreviewSource] = useState<"ai" | "manual" | "none">(
+    () => initialDraft?.previewSource || "none"
+  );
+
+  // Loading States
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [isRenderingManual, setIsRenderingManual] = useState(false);
+  const [isSendingTele, setIsSendingTele] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Tính toán title ngắn hạn: vd "Báo cáo 24/09" hoặc "Kế hoạch 25/09"
+  const getShortCaption = (m: ReportMode, dateStr: string) => {
+    try {
+      const parts = dateStr.split("-");
+      if (parts.length === 3) {
+        const [, month, day] = parts;
+        const label = m === "plan" ? "Kế hoạch" : "Báo cáo";
+        return `${label} ${day}/${month}`;
+      }
+    } catch {}
+    return m === "plan" ? "Kế hoạch" : "Báo cáo";
+  };
+
+  const currentCaption = getShortCaption(mode, reportDate);
+
+  // Tự động lưu bản nháp vào localStorage để khi out Chrome mobile hoặc tab reload không bao giờ bị mất nội dung
+  useEffect(() => {
+    const draft: ReportDraft = {
+      mode,
+      reportDate,
+      inputMethod,
+      rawInput,
+      manualSections,
+      extraTodos,
+      finalText,
+      previewImageUrl,
+      previewSource,
+    };
+    try {
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch {
+      // Nếu quota localStorage bị đầy do ảnh Data URL lớn, lưu dữ liệu text bỏ qua previewImageUrl
+      try {
+        localStorage.setItem(
+          DRAFT_STORAGE_KEY,
+          JSON.stringify({ ...draft, previewImageUrl: "" })
+        );
+      } catch {}
+    }
+  }, [
+    mode,
+    reportDate,
+    inputMethod,
+    rawInput,
+    manualSections,
+    extraTodos,
+    finalText,
+    previewImageUrl,
+    previewSource,
+  ]);
+
+  const handleResetDraft = () => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa bản nháp hiện tại để làm mới không?")) {
+      try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } catch {}
+      setRawInput("");
+      setManualSections({
+        chotDon: "",
+        gapMat: "",
+        guiMau: "",
+        lienHe: "",
+        sec5: "",
+      });
+      setExtraTodos([]);
+      setFinalText("");
+      setPreviewImageUrl("");
+      setPreviewSource("none");
+      setStatusMessage({
+        type: "success",
+        text: "Đã làm mới bản nháp thành công!",
+      });
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
+  };
+
+  // Xử lý dán văn bản từ bản ghi âm gần nhất
+  const handlePasteTranscript = () => {
+    if (initialTranscriptText) {
+      setRawInput(initialTranscriptText);
+      setInputMethod("ai_auto");
+      setStatusMessage({
+        type: "success",
+        text: "Đã dán nội dung từ bản phiên âm ghi âm mới nhất!",
+      });
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
+  };
+
+  // 1. Hành động: "Tạo nội dung bằng AI" (Từ Ô nhập thô số 1)
+  const handleGenerateByAi = async () => {
+    if (!rawInput.trim()) {
+      setStatusMessage({
+        type: "error",
+        text: "Vui lòng nhập nội dung ghi chép hoặc biên bản cuộc gặp!",
+      });
+      return;
+    }
+
+    setIsGeneratingAi(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await generateReportApi({
+        mode,
+        report_date: reportDate,
+        content: rawInput.trim(),
+      });
+
+      // Cập nhật bản text chuẩn 5 mục
+      setFinalText(res.summary_text);
+      // Cập nhật ảnh tương ứng và GIỮ NGUYÊN không bị trôi
+      setPreviewImageUrl(res.image_data_url);
+      setPreviewSource("ai");
+      // Tự động chuyển sang xem ảnh trên giao diện mobile
+      setMobileTab("preview");
+
+      setStatusMessage({
+        type: "success",
+        text: "AI đã chuẩn hóa thành công 5 mục và cập nhật ảnh báo cáo!",
+      });
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.detail || err?.message || "Lỗi khi gọi API AI tạo nội dung";
+      setStatusMessage({ type: "error", text: String(errorMsg) });
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
+  // Thao tác với To-do list bổ sung (chỉ ở chế độ Kế hoạch)
+  const handleAddTodo = () => {
+    setExtraTodos((prev) => [
+      ...prev,
+      { id: String(Date.now()), title: "", note: "" },
+    ]);
+  };
+
+  const handleRemoveTodo = (id: string) => {
+    setExtraTodos((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleUpdateTodo = (id: string, field: "title" | "note", val: string) => {
+    setExtraTodos((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, [field]: val } : t))
+    );
+  };
+
+  // 2. Hành động: "Tạo ảnh từ các mục thủ công"
+  const handleRenderFromManual = async () => {
+    const hasAnyStandard = Object.values(manualSections).some((v) => v.trim().length > 0);
+    const hasAnyTodo =
+      mode === "plan" &&
+      extraTodos.some((t) => t.title.trim().length > 0 || t.note.trim().length > 0);
+
+    if (!hasAnyStandard && !hasAnyTodo) {
+      setStatusMessage({
+        type: "error",
+        text: "Vui lòng điền thông tin vào ít nhất 1 mục trước khi tạo ảnh!",
+      });
+      return;
+    }
+
+    setIsRenderingManual(true);
+    setStatusMessage(null);
+
+    const sec5Title = mode === "plan" ? "Đăng bài" : "Công việc tồn đọng";
+
+    const parseLines = (raw: string) => {
+      const trimmed = raw.trim();
+      if (!trimmed) return ["0"];
+      const lines = trimmed
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      return lines.length > 0 ? lines : ["0"];
+    };
+
+    const structuredSections: Array<{ num: string; title: string; items: string[] }> = [
+      { num: "1", title: "Chốt đơn", items: parseLines(manualSections.chotDon) },
+      { num: "2", title: "Gặp mặt", items: parseLines(manualSections.gapMat) },
+      { num: "3", title: "Gửi mẫu, cắt mẫu", items: parseLines(manualSections.guiMau) },
+      { num: "4", title: "Liên hệ khách hàng", items: parseLines(manualSections.lienHe) },
+      { num: "5", title: sec5Title, items: parseLines(manualSections.sec5) },
+    ];
+
+    if (mode === "plan") {
+      extraTodos.forEach((todo, idx) => {
+        if (todo.title.trim() || todo.note.trim()) {
+          const numStr = String(6 + idx);
+          const t = todo.title.trim() || `Công việc #${numStr}`;
+          const items = parseLines(todo.note);
+          structuredSections.push({ num: numStr, title: t, items });
+        }
+      });
+    }
+
+    // Ghép text chuẩn hóa cho Telegram và Copy
+    let compiled = `${currentCaption}\n\n`;
+    structuredSections.forEach((s) => {
+      compiled += `${s.num}. ${s.title}\n`;
+      s.items.forEach((it) => {
+        compiled += `${it}\n`;
+      });
+      compiled += `\n`;
+    });
+    compiled = compiled.trim();
+
+    try {
+      const res = await renderLiveImageApi({
+        content: compiled,
+        title: currentCaption,
+        sections: structuredSections,
+      });
+
+      setFinalText(compiled);
+      setPreviewImageUrl(res.image_data_url);
+      setPreviewSource("manual");
+      // Tự động chuyển sang xem ảnh trên giao diện mobile
+      setMobileTab("preview");
+
+      setStatusMessage({
+        type: "success",
+        text: `Đã tổng hợp ${structuredSections.length} mục và tạo ảnh Dark Mode thành công!`,
+      });
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.detail || err?.message || "Lỗi khi tạo ảnh từ các mục";
+      setStatusMessage({ type: "error", text: String(errorMsg) });
+    } finally {
+      setIsRenderingManual(false);
+    }
+  };
+
+  // 3. Hành động: "Gửi nội dung sang Telegram"
+  const handleSendToTelegram = async () => {
+    if (!finalText.trim()) {
+      setStatusMessage({
+        type: "error",
+        text: "Chưa có nội dung báo cáo! Vui lòng bấm 'Tạo nội dung bằng AI' hoặc 'Tạo ảnh từ 5 mục' trước khi gửi.",
+      });
+      return;
+    }
+
+    setIsSendingTele(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await sendReportApi({
+        mode,
+        report_date: reportDate,
+        summary_text: finalText,
+        image_data_url: previewImageUrl || undefined,
+      });
+
+      setStatusMessage({
+        type: "success",
+        text: `Đã gửi ảnh thành công vào Telegram kèm tiêu đề: "${res.caption}"!`,
+      });
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.detail || err?.message || "Lỗi khi gửi sang Telegram";
+      setStatusMessage({ type: "error", text: String(errorMsg) });
+    } finally {
+      setIsSendingTele(false);
+    }
+  };
+
+  // Copy bản text cuối cùng
+  const handleCopyFinalText = () => {
+    if (!finalText) return;
+    navigator.clipboard.writeText(finalText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Tải ảnh PNG về máy
+  const handleDownloadImage = () => {
+    if (!previewImageUrl) return;
+    const a = document.createElement("a");
+    a.href = previewImageUrl;
+    a.download = `${currentCaption.replace(/[\/\s]/g, "_")}.png`;
+    a.click();
+  };
+
+  return (
+    <div className="w-full flex flex-col lg:grid lg:grid-cols-12 gap-4 sm:gap-6 select-none">
+      {/* MOBILE SEGMENTED CONTROL (< lg screens) */}
+      <div className="lg:hidden flex items-center p-1 bg-[#12131A] rounded-2xl border border-white/[0.08] shadow-lg sticky top-[3.75rem] z-20 backdrop-blur-md">
+        <button
+          type="button"
+          onClick={() => setMobileTab("edit")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all cursor-pointer",
+            mobileTab === "edit"
+              ? "bg-[#2563EB] text-white shadow-md shadow-blue-600/30"
+              : "text-neutral-400 hover:text-white"
+          )}
+        >
+          <PenLine className="h-3.5 w-3.5" />
+          <span>1. Soạn thảo</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobileTab("preview")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all cursor-pointer relative",
+            mobileTab === "preview"
+              ? "bg-[#2563EB] text-white shadow-md shadow-blue-600/30"
+              : "text-neutral-400 hover:text-white"
+          )}
+        >
+          <Eye className="h-3.5 w-3.5" />
+          <span>2. Xem ảnh thẻ</span>
+          {previewImageUrl && (
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse ml-1" />
+          )}
+        </button>
+      </div>
+
+      {/* CỘT TRÁI: ĐIỀU KHIỂN & 2 PHƯƠNG THỨC NHẬP LIỆU (6 Cols) */}
+      <div
+        className={cn(
+          "lg:col-span-6 flex flex-col gap-4 sm:gap-5",
+          mobileTab === "preview" ? "hidden lg:flex" : "flex"
+        )}
+      >
+        <div className="rounded-2xl border border-white/[0.08] bg-[#12131A] p-3.5 sm:p-5 shadow-xl flex flex-col gap-4">
+          {/* Header Card */}
+          <div className="flex items-center justify-between border-b border-white/[0.06] pb-3 gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-[#3B82F6] to-[#8B5CF6] flex items-center justify-center text-white shadow-lg shadow-blue-500/20 shrink-0">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-white tracking-tight truncate">
+                  Kế hoạch & Báo cáo chuẩn 5 mục
+                </h2>
+                <p className="text-[11px] text-neutral-400 truncate">
+                  Chuẩn hóa tự động theo cấu trúc & xuất ảnh gửi Telegram
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleResetDraft}
+              title="Xóa bản nháp để làm mới từ đầu"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-rose-300 hover:bg-rose-500/10 border border-white/[0.08] hover:border-rose-500/30 transition-all cursor-pointer shrink-0"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Làm mới</span>
+            </button>
+          </div>
+
+          {/* Chọn Chế độ & Ngày tháng */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Chế độ */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-neutral-300">Chế độ:</label>
+              <div className="grid grid-cols-2 p-1 bg-black/40 border border-white/[0.06] rounded-xl gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMode("plan")}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                    mode === "plan"
+                      ? "bg-[#2563EB] text-white shadow-md shadow-blue-600/30"
+                      : "text-neutral-400 hover:text-white hover:bg-white/[0.04]"
+                  )}
+                >
+                  <Calendar className="h-3.5 w-3.5" />
+                  <span>Kế hoạch</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMode("report")}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                    mode === "report"
+                      ? "bg-[#2563EB] text-white shadow-md shadow-blue-600/30"
+                      : "text-neutral-400 hover:text-white hover:bg-white/[0.04]"
+                  )}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Báo cáo</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Ngày tháng */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-neutral-300">Ngày báo cáo:</label>
+              <input
+                type="date"
+                value={reportDate}
+                onChange={(e) => setReportDate(e.target.value)}
+                style={{ colorScheme: "dark" }}
+                className="w-full bg-black/30 border border-white/[0.08] rounded-xl px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-blue-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Chọn Phương thức nhập: AI Tự động vs Tự điền 5 mục */}
+          <div className="flex flex-col gap-1.5 pt-1">
+            <label className="text-xs font-medium text-neutral-300">Phương thức nhập dữ liệu:</label>
+            <div className="grid grid-cols-2 p-1 bg-black/50 border border-white/[0.08] rounded-xl gap-1">
+              <button
+                type="button"
+                onClick={() => setInputMethod("ai_auto")}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer text-center",
+                  inputMethod === "ai_auto"
+                    ? "bg-white/[0.14] text-white shadow-sm border border-white/[0.12]"
+                    : "text-neutral-400 hover:text-neutral-200"
+                )}
+              >
+                <Bot className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                <span className="sm:hidden">1. Tóm tắt AI</span>
+                <span className="hidden sm:inline">1. Tóm tắt AI (Văn bản dài)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInputMethod("manual_5")}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer text-center",
+                  inputMethod === "manual_5"
+                    ? "bg-white/[0.14] text-white shadow-sm border border-white/[0.12]"
+                    : "text-neutral-400 hover:text-neutral-200"
+                )}
+              >
+                <ListPlus className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <span className="sm:hidden">2. Tự nhập 5 ô</span>
+                <span className="hidden sm:inline">2. Tự nhập 5 mục thủ công</span>
+              </button>
+            </div>
+          </div>
+
+          {/* ======================= PHƯƠNG THỨC 1: AI TỰ ĐỘNG ======================= */}
+          {inputMethod === "ai_auto" && (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-white flex items-center gap-1.5">
+                    <PenLine className="h-3.5 w-3.5 text-blue-400" />
+                    <span>Nội dung ghi chép thô (Không giới hạn độ dài):</span>
+                  </label>
+                  {initialTranscriptText && (
+                    <button
+                      type="button"
+                      onClick={handlePasteTranscript}
+                      className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+                    >
+                      <ClipboardPaste className="h-3 w-3" />
+                      <span>Dán từ ghi âm</span>
+                    </button>
+                  )}
+                </div>
+
+                <textarea
+                  rows={6}
+                  value={rawInput}
+                  onChange={(e) => setRawInput(e.target.value)}
+                  placeholder={
+                    mode === "plan"
+                      ? "Dán hoặc gõ kế hoạch của bạn tại đây... (Hỗ trợ văn bản rất dài, biên bản cuộc họp, ghi chú tự do không hạn chế độ dài)"
+                      : "Dán hoặc gõ nội dung cuộc gặp đối tác, giao dịch bán hàng, thỏa thuận sản phẩm, giá cả, tình trạng mẫu... (Hỗ trợ bản bóc băng âm thanh dài 1-2 tiếng)"
+                  }
+                  className="w-full bg-black/40 border border-white/[0.08] rounded-xl p-3 text-sm sm:text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-blue-500 resize-none transition-colors leading-relaxed"
+                />
+                <div className="flex justify-between items-center text-[10px] text-neutral-500">
+                  <span>Hỗ trợ văn bản cực dài lên tới 100.000 từ với Gemini 3 Flash</span>
+                  <span>{rawInput.length} ký tự</span>
+                </div>
+              </div>
+
+              {/* Nút bấm AI */}
+              <button
+                type="button"
+                onClick={handleGenerateByAi}
+                disabled={isGeneratingAi || !rawInput.trim()}
+                className="w-full py-3 sm:py-2.5 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isGeneratingAi ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>AI đang đọc hiểu và chuẩn hóa 5 mục...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    <span>Tạo nội dung bằng AI (Chuẩn hóa đúng 5 mục)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ======================= PHƯƠNG THỨC 2: TỰ NHẬP CÁC MỤC ======================= */}
+          {inputMethod === "manual_5" && (
+            <div className="flex flex-col gap-3">
+              <div className="text-[11px] text-neutral-400 bg-white/[0.03] p-2.5 rounded-xl border border-white/[0.06]">
+                Nhập chi tiết từng mục dưới đây (dễ dàng <b>xuống dòng ghi chú như Notes</b>). Mục nào không có bạn có thể <b>để trống</b> hoặc gõ <b>0</b>.
+              </div>
+
+              {/* Mục 1: Chốt đơn */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-blue-400">1. Chốt đơn:</label>
+                <textarea
+                  rows={2}
+                  value={manualSections.chotDon}
+                  onChange={(e) => setManualSections({ ...manualSections, chotDon: e.target.value })}
+                  placeholder={"Ví dụ:\n- 01 đơn vải mè 500m - Anh Tuấn (giá 32k)\n- 01 đơn kaki 200m - Chị Hoa"}
+                  className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-blue-500 placeholder:text-neutral-500 placeholder:text-xs leading-relaxed resize-y"
+                />
+              </div>
+
+              {/* Mục 2: Gặp mặt */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-purple-400">2. Gặp mặt:</label>
+                <textarea
+                  rows={2}
+                  value={manualSections.gapMat}
+                  onChange={(e) => setManualSections({ ...manualSections, gapMat: e.target.value })}
+                  placeholder={"Ví dụ:\n- Chị Huyền-9900: Mang vải kaki sang duyệt mẫu\n- Anh Dũng: Trao đổi tiến độ"}
+                  className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-purple-500 placeholder:text-neutral-500 placeholder:text-xs leading-relaxed resize-y"
+                />
+              </div>
+
+              {/* Mục 3: Gửi mẫu, cắt mẫu */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-emerald-400">3. Gửi mẫu, cắt mẫu:</label>
+                <textarea
+                  rows={2}
+                  value={manualSections.guiMau}
+                  onChange={(e) => setManualSections({ ...manualSections, guiMau: e.target.value })}
+                  placeholder={"Ví dụ:\n- Cắt mẫu kaki xanh gửi bưu điện\n- Soạn mẫu thun lạnh gửi khách tỉnh"}
+                  className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-emerald-500 placeholder:text-neutral-500 placeholder:text-xs leading-relaxed resize-y"
+                />
+              </div>
+
+              {/* Mục 4: Liên hệ khách hàng */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-amber-400">4. Liên hệ khách hàng:</label>
+                <textarea
+                  rows={2}
+                  value={manualSections.lienHe}
+                  onChange={(e) => setManualSections({ ...manualSections, lienHe: e.target.value })}
+                  placeholder={"Ví dụ:\n- Hoàng Bùi-1566: Trao đổi về giá và hợp đồng\n- Chị Lan: Xin feedback mẫu"}
+                  className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-amber-500 placeholder:text-neutral-500 placeholder:text-xs leading-relaxed resize-y"
+                />
+              </div>
+
+              {/* Mục 5: Đăng bài (ở Kế hoạch) hoặc Công việc tồn đọng (ở Báo cáo) */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-rose-400">
+                  {mode === "plan" ? "5. Đăng bài:" : "5. Công việc tồn đọng:"}
+                </label>
+                <textarea
+                  rows={2}
+                  value={manualSections.sec5}
+                  onChange={(e) => setManualSections({ ...manualSections, sec5: e.target.value })}
+                  placeholder={
+                    mode === "plan"
+                      ? "Ví dụ:\n- Đăng 2 bài mẫu vải kate mới lên nhóm Zalo sỉ\n- 1 video TikTok xưởng may"
+                      : "Ví dụ:\n- Anh Tuấn: Hợp đồng chưa ký duyệt\n- Đơn mẫu chưa nhận được thanh toán"
+                  }
+                  className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-rose-500 placeholder:text-neutral-500 placeholder:text-xs leading-relaxed resize-y"
+                />
+              </div>
+
+              {/* DANH SÁCH CÔNG VIỆC BỔ SUNG (Chỉ ở chế độ Kế hoạch) */}
+              {mode === "plan" && (
+                <div className="flex flex-col gap-2.5 pt-1">
+                  {extraTodos.map((todo, index) => {
+                    const itemNum = 6 + index;
+                    return (
+                      <div
+                        key={todo.id}
+                        className="p-3 bg-white/[0.03] border border-blue-500/20 rounded-xl flex flex-col gap-2 relative animate-in fade-in duration-150"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-blue-400 flex items-center gap-1.5">
+                            <span className="h-5 w-5 rounded bg-blue-500/20 text-blue-300 flex items-center justify-center text-[11px] font-bold">
+                              {itemNum}
+                            </span>
+                            <span>Công việc bổ sung:</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTodo(todo.id)}
+                            className="text-neutral-500 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
+                            title="Xóa công việc này"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={todo.title}
+                          onChange={(e) => handleUpdateTodo(todo.id, "title", e.target.value)}
+                          placeholder={`Tiêu đề công việc #${itemNum} (vd: Kiểm tra kho vải, Thu công nợ...)`}
+                          className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-blue-500 placeholder:text-neutral-500 placeholder:text-xs"
+                        />
+
+                        <textarea
+                          rows={2}
+                          value={todo.note}
+                          onChange={(e) => handleUpdateTodo(todo.id, "note", e.target.value)}
+                          placeholder="Ghi chú chi tiết cho công việc này (xuống dòng thoải mái như notes)..."
+                          className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-blue-500 placeholder:text-neutral-500 placeholder:text-xs leading-relaxed resize-y"
+                        />
+                      </div>
+                    );
+                  })}
+
+                  {/* Nút + (Nét đứt) để thêm việc mới như to-do list */}
+                  <button
+                    type="button"
+                    onClick={handleAddTodo}
+                    className="w-full py-2.5 px-4 border-2 border-dashed border-white/20 hover:border-blue-500/50 hover:bg-blue-500/5 text-neutral-400 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer mt-0.5"
+                  >
+                    <Plus className="h-4 w-4 text-blue-400" />
+                    <span>Thêm công việc mới (To-do list)</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Nút Render tạo ảnh */}
+              <button
+                type="button"
+                onClick={handleRenderFromManual}
+                disabled={isRenderingManual}
+                className="w-full py-3 sm:py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer mt-1"
+              >
+                {isRenderingManual ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Đang render ảnh...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    <span>
+                      Tạo ảnh từ các mục này{" "}
+                      {mode === "plan" && extraTodos.length > 0 ? `(${5 + extraTodos.length} mục)` : "(5 mục)"}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* VĂN BẢN CHUẨN HÓA CUỐI CÙNG (DÙNG ĐỂ GỬI TELEGRAM) */}
+          <div className="flex flex-col gap-1.5 pt-2 border-t border-white/[0.06]">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5 text-blue-400" />
+                <span>Nội dung văn bản chuẩn bị gửi (5 mục):</span>
+              </label>
+              {finalText && (
+                <button
+                  type="button"
+                  onClick={handleCopyFinalText}
+                  className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-3 w-3 text-emerald-400" />
+                      <span className="text-emerald-400">Đã copy</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3" />
+                      <span>Copy văn bản</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            <textarea
+              rows={6}
+              readOnly
+              value={finalText}
+              placeholder="Văn bản chuẩn 5 mục (do AI gen hoặc do bạn vừa tạo từ 5 ô) sẽ xuất hiện tại đây và giữ cố định..."
+              className={cn(
+                "w-full rounded-xl p-3 text-sm sm:text-xs font-sans resize-none transition-colors leading-relaxed border select-text cursor-default",
+                finalText
+                  ? "bg-black/60 border-blue-500/30 text-neutral-100"
+                  : "bg-black/20 border-white/[0.04] text-neutral-600 placeholder-neutral-600"
+              )}
+            />
+          </div>
+
+          {/* Thông báo trạng thái */}
+          {statusMessage && (
+            <div
+              className={cn(
+                "flex items-center gap-2 p-3 rounded-xl text-xs font-medium border",
+                statusMessage.type === "success"
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : "bg-red-500/10 border-red-500/30 text-red-300"
+              )}
+            >
+              {statusMessage.type === "success" ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0" />
+              )}
+              <span className="flex-1">{statusMessage.text}</span>
+            </div>
+          )}
+
+          {/* NÚT: Gửi nội dung sang Telegram */}
+          <button
+            type="button"
+            onClick={handleSendToTelegram}
+            disabled={isSendingTele || !finalText.trim()}
+            className="w-full py-3.5 sm:py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-1"
+          >
+            {isSendingTele ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Đang gửi ảnh sang Telegram...</span>
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                <span className="truncate">Gửi nội dung sang Telegram (Kèm tin nhắn: {currentCaption})</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* CỘT PHẢI: ẢNH XEM TRƯỚC (GIỮ CỐ ĐỊNH, KHÔNG BỊ TRÔI HOẶC RESET) (6 Cols) */}
+      <div
+        className={cn(
+          "lg:col-span-6 flex flex-col gap-4 sm:gap-5",
+          mobileTab === "edit" ? "hidden lg:flex" : "flex"
+        )}
+      >
+        <div className="rounded-2xl border border-white/[0.08] bg-[#12131A] p-3.5 sm:p-5 shadow-xl flex flex-col gap-4 min-h-[360px] sm:min-h-[580px]">
+          {/* Header Preview */}
+          <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-blue-400" />
+              <span className="text-xs font-semibold text-white uppercase tracking-wider">
+                Ảnh báo cáo:
+              </span>
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                {currentCaption}
+              </span>
+            </div>
+
+            {/* Trạng thái ảnh & Nút tải */}
+            <div className="flex items-center gap-2">
+              {previewSource === "ai" && (
+                <span className="text-[10px] text-emerald-400 flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  <Sparkles className="h-3 w-3" />
+                  <span className="hidden sm:inline">Chuẩn hóa AI</span>
+                </span>
+              )}
+              {previewSource === "manual" && (
+                <span className="text-[10px] text-blue-400 flex items-center gap-1 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+                  <Check className="h-3 w-3" />
+                  <span className="hidden sm:inline">Từ 5 mục nhập</span>
+                </span>
+              )}
+
+              {previewImageUrl && (
+                <button
+                  type="button"
+                  onClick={handleDownloadImage}
+                  className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-white px-2 py-1 rounded bg-white/[0.06] transition-colors cursor-pointer"
+                  title="Tải ảnh về máy"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>Tải ảnh</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Khu vực hiển thị ảnh */}
+          <div className="flex-1 flex flex-col items-center justify-center">
+            {previewImageUrl ? (
+              <div className="w-full flex flex-col items-center justify-center p-1.5 sm:p-2 bg-black/80 rounded-xl border border-white/[0.08] overflow-hidden">
+                <img
+                  src={previewImageUrl}
+                  alt="Xem trước ảnh báo cáo"
+                  className="w-full max-w-full sm:max-w-[500px] h-auto rounded-lg shadow-2xl object-contain border border-neutral-800"
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-3 p-8 sm:p-12 text-center border-2 border-dashed border-white/[0.06] rounded-xl w-full h-full min-h-[300px] sm:min-h-[420px]">
+                <div className="h-12 w-12 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-neutral-500">
+                  <FileText className="h-6 w-6" />
+                </div>
+                <div className="flex flex-col gap-1 max-w-xs">
+                  <p className="text-sm font-medium text-neutral-300">
+                    Chưa có ảnh báo cáo
+                  </p>
+                  <p className="text-xs text-neutral-500">
+                    Bấm <b>"Tạo nội dung bằng AI"</b> hoặc <b>"Tự nhập 5 mục thủ công"</b> rồi bấm tạo ảnh để xem trước thẻ Dark Mode tại đây.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Thanh thao tác nhanh ngay dưới ảnh báo cáo */}
+            {previewImageUrl && (
+              <div className="w-full flex flex-col gap-2.5 mt-4 pt-4 border-t border-white/[0.08]">
+                {/* Nút gửi sang Telegram ngay tại tab xem ảnh */}
+                <button
+                  type="button"
+                  onClick={handleSendToTelegram}
+                  disabled={isSendingTele || !finalText.trim()}
+                  className="w-full py-3.5 sm:py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSendingTele ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Đang gửi ảnh sang Telegram...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      <span className="truncate">Gửi ngay sang Telegram ({currentCaption})</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Hàng nút trên mobile: Quay lại sửa & Tải ảnh */}
+                <div className="flex items-center justify-between gap-2 lg:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setMobileTab("edit")}
+                    className="flex-1 py-2.5 px-3 bg-white/[0.06] hover:bg-white/[0.1] text-neutral-300 hover:text-white rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <PenLine className="h-3.5 w-3.5" />
+                    <span>← Quay lại chỉnh sửa</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadImage}
+                    className="py-2.5 px-4 bg-white/[0.06] hover:bg-white/[0.1] text-neutral-300 hover:text-white rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Lưu ảnh</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
