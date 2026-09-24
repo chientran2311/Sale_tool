@@ -59,3 +59,31 @@ async def send_photo_to_telegram(
                 await asyncio.sleep(1.0)
 
     raise RuntimeError(f"Không thể gửi ảnh tới Telegram sau 3 lần thử: {last_error}")
+
+
+async def delete_telegram_message(
+    message_id: int,
+    chat_id: Optional[str] = None
+) -> bool:
+    bot_token = TELEGRAM_BOT_TOKEN
+    target_chat_id = chat_id or TELEGRAM_CHAT_ID
+
+    if not bot_token:
+        raise ValueError("Chưa cấu hình TELEGRAM_BOT_TOKEN.")
+    if not target_chat_id:
+        raise ValueError("Chưa cấu hình TELEGRAM_CHAT_ID.")
+
+    url = f"https://api.telegram.org/bot{bot_token}/deleteMessage"
+    data = {
+        "chat_id": str(target_chat_id),
+        "message_id": message_id
+    }
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        resp = await client.post(url, json=data)
+        res_json = resp.json()
+        if resp.status_code == 200 and res_json.get("ok"):
+            logger.info(f"Đã xóa tin nhắn {message_id} trên Telegram thành công.")
+            return True
+        error_desc = res_json.get("description", "Không rõ nguyên nhân")
+        raise RuntimeError(f"Lỗi xóa tin nhắn Telegram: {error_desc}")

@@ -23,6 +23,7 @@ import {
   generateReportApi,
   sendReportApi,
   renderLiveImageApi,
+  deleteMessageApi,
   type ReportMode,
 } from "../api/reportApi";
 import { cn } from "@/lib/utils";
@@ -132,6 +133,20 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
     text: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Tin nhắn vừa gửi sang Telegram (để có thể xóa ngay nếu gửi nhầm)
+  const [lastSentMessage, setLastSentMessage] = useState<{
+    messageId: number;
+    chatId: string;
+    caption: string;
+  } | null>(() => {
+    try {
+      const saved = localStorage.getItem("sale_tool_last_sent_msg");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+  const [isDeletingMsg, setIsDeletingMsg] = useState(false);
 
   // Tính toán title ngắn hạn: vd "Báo cáo 24/09" hoặc "Kế hoạch 25/09"
   const getShortCaption = (m: ReportMode, dateStr: string) => {
@@ -467,6 +482,18 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
         image_data_url: previewImageUrl || undefined,
       });
 
+      if (res.message_id) {
+        const sentData = {
+          messageId: res.message_id,
+          chatId: res.chat_id,
+          caption: res.caption || currentCaption,
+        };
+        setLastSentMessage(sentData);
+        try {
+          localStorage.setItem("sale_tool_last_sent_msg", JSON.stringify(sentData));
+        } catch {}
+      }
+
       setStatusMessage({
         type: "success",
         text: `Đã gửi ảnh thành công vào Telegram kèm tiêu đề: "${res.caption}"!`,
@@ -477,6 +504,43 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
       setStatusMessage({ type: "error", text: String(errorMsg) });
     } finally {
       setIsSendingTele(false);
+    }
+  };
+
+  // 4. Hành động: "Xóa tin nhắn vừa gửi trên Telegram"
+  const handleDeleteLastSentMessage = async () => {
+    if (!lastSentMessage?.messageId) return;
+
+    const ok = window.confirm(
+      `Bạn có chắc chắn muốn xóa tin nhắn và ảnh vừa gửi ("${lastSentMessage.caption}") trên nhóm Telegram không?`
+    );
+    if (!ok) return;
+
+    setIsDeletingMsg(true);
+    setStatusMessage(null);
+
+    try {
+      await deleteMessageApi({
+        message_id: lastSentMessage.messageId,
+        chat_id: lastSentMessage.chatId,
+      });
+
+      const captionDeleted = lastSentMessage.caption;
+      setLastSentMessage(null);
+      try {
+        localStorage.removeItem("sale_tool_last_sent_msg");
+      } catch {}
+
+      setStatusMessage({
+        type: "success",
+        text: `Đã xóa thành công tin nhắn và ảnh ("${captionDeleted}") khỏi nhóm Telegram!`,
+      });
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.detail || err?.message || "Lỗi khi xóa tin nhắn Telegram";
+      setStatusMessage({ type: "error", text: String(errorMsg) });
+    } finally {
+      setIsDeletingMsg(false);
     }
   };
 
@@ -1050,6 +1114,28 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
               </>
             )}
           </button>
+
+          {/* NÚT: Xóa tin nhắn vừa gửi (gồm ảnh + tin nhắn) */}
+          {lastSentMessage && (
+            <button
+              type="button"
+              onClick={handleDeleteLastSentMessage}
+              disabled={isDeletingMsg}
+              className="w-full py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 mt-1"
+            >
+              {isDeletingMsg ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-400" />
+                  <span>Đang xóa tin nhắn trên Telegram...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                  <span>Xóa tin nhắn vừa gửi ({lastSentMessage.caption})</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1150,6 +1236,28 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
                     </>
                   )}
                 </button>
+
+                {/* NÚT: Xóa tin nhắn vừa gửi (gồm ảnh + tin nhắn) */}
+                {lastSentMessage && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteLastSentMessage}
+                    disabled={isDeletingMsg}
+                    className="w-full py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isDeletingMsg ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-400" />
+                        <span>Đang xóa tin nhắn trên Telegram...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                        <span>Xóa tin nhắn vừa gửi ({lastSentMessage.caption})</span>
+                      </>
+                    )}
+                  </button>
+                )}
 
                 {/* Hàng nút trên mobile: Quay lại sửa & Tải ảnh */}
                 <div className="flex items-center justify-between gap-2 lg:hidden">

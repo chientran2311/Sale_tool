@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .services.report_ai_service import generate_standardized_report
 from .services.report_image_service import render_report_image
-from .services.telegram_service import send_photo_to_telegram
+from .services.telegram_service import send_photo_to_telegram, delete_telegram_message
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -187,4 +187,30 @@ async def send_report_endpoint(payload: ReportSendPayload):
         )
     except Exception as e:
         logger.error(f"Lỗi send_report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DeleteMessagePayload(BaseModel):
+    message_id: int
+    chat_id: Optional[str] = None
+
+
+class DeleteMessageResponse(BaseModel):
+    success: bool
+    message: str
+
+
+@app.post("/api/v1/reports/delete-message", response_model=DeleteMessageResponse)
+async def delete_message_endpoint(payload: DeleteMessagePayload):
+    try:
+        await delete_telegram_message(
+            message_id=payload.message_id,
+            chat_id=payload.chat_id,
+        )
+        return DeleteMessageResponse(
+            success=True,
+            message="Đã xóa tin nhắn trên nhóm Telegram thành công!",
+        )
+    except Exception as e:
+        logger.error(f"Lỗi delete_message: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

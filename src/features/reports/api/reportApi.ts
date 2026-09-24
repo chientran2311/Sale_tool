@@ -89,3 +89,24 @@ export async function renderLiveImageApi(
   );
   return res.data;
 }
+
+export interface DeleteMessagePayload {
+  message_id: number;
+  chat_id?: string;
+}
+
+export interface DeleteMessageResponse {
+  success: boolean;
+  message: string;
+}
+
+export async function deleteMessageApi(
+  payload: DeleteMessagePayload
+): Promise<DeleteMessageResponse> {
+  const res = await apiClient.post<DeleteMessageResponse>(
+    "/reports/delete-message",
+    payload
+  );
+  return res.data;
+}
+
