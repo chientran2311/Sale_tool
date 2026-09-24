@@ -323,10 +323,67 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
     }
   };
 
+  // Helper tổng hợp nội dung văn bản từ 5 ô nhập thủ công
+  const compileManualText = (): string => {
+    const sec5Title = mode === "plan" ? "Đăng bài" : "Công việc tồn đọng";
+    const parseLines = (raw: string) => {
+      const trimmed = raw.trim();
+      if (!trimmed) return ["0"];
+      const lines = trimmed
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      return lines.length > 0 ? lines : ["0"];
+    };
+
+    let compiled = `${currentCaption}\n\n`;
+    compiled += `1. Chốt đơn\n${parseLines(manualSections.chotDon).join("\n")}\n\n`;
+    compiled += `2. Gặp mặt\n${parseLines(manualSections.gapMat).join("\n")}\n\n`;
+    compiled += `3. Gửi mẫu, cắt mẫu\n${parseLines(manualSections.guiMau).join("\n")}\n\n`;
+    compiled += `4. Liên hệ khách hàng\n${parseLines(manualSections.lienHe).join("\n")}\n\n`;
+    compiled += `5. ${sec5Title}\n${parseLines(manualSections.sec5).join("\n")}\n\n`;
+
+    if (mode === "plan") {
+      extraTodos.forEach((todo, idx) => {
+        if (todo.title.trim() || todo.note.trim()) {
+          const numStr = String(6 + idx);
+          const t = todo.title.trim() || `Công việc #${numStr}`;
+          compiled += `${numStr}. ${t}\n${parseLines(todo.note).join("\n")}\n\n`;
+        }
+      });
+    }
+
+    return compiled.trim();
+  };
+
+  // Tự động debounced update ảnh xem trước khi người dùng gõ/sửa ô văn bản chuẩn bị gửi (ô input 2)
+  useEffect(() => {
+    if (!finalText.trim()) return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await renderLiveImageApi({
+          content: finalText.trim(),
+          title: currentCaption,
+        });
+        setPreviewImageUrl(res.image_data_url);
+      } catch (err) {
+        console.error("Lỗi khi tự động cập nhật ảnh xem trước:", err);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [finalText, currentCaption]);
+
   // 1b. Hành động: "Cập nhật ảnh từ văn bản đã chỉnh sửa"
   const [isUpdatingImage, setIsUpdatingImage] = useState(false);
   const handleUpdateImageFromFinalText = async () => {
-    if (!finalText.trim()) {
+    let targetText = finalText.trim();
+    if (!targetText && inputMethod === "manual_5") {
+      targetText = compileManualText();
+      setFinalText(targetText);
+    }
+
+    if (!targetText) {
       setStatusMessage({
         type: "error",
         text: "Vui lòng nhập nội dung văn bản trước khi cập nhật ảnh!",
@@ -339,7 +396,7 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
 
     try {
       const res = await renderLiveImageApi({
-        content: finalText.trim(),
+        content: targetText,
         title: currentCaption,
       });
 
@@ -348,8 +405,9 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
 
       setStatusMessage({
         type: "success",
-        text: "Đã cập nhật lại ảnh thẻ theo văn bản bạn vừa sửa!",
+        text: "Đã cập nhật lại ảnh thẻ sắc nét theo văn bản mới nhất!",
       });
+      setTimeout(() => setStatusMessage(null), 3000);
     } catch (err: any) {
       const errorMsg =
         err?.response?.data?.detail || err?.message || "Lỗi khi render ảnh từ văn bản";
@@ -657,6 +715,52 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
     a.click();
   };
 
+  // Xử lý chuyển đổi chế độ Kế hoạch <-> Báo cáo
+  const handleSwitchMode = (newMode: ReportMode) => {
+    setMode(newMode);
+    if (newMode === "report") {
+      setExtraTodos([]);
+      // Ở chế độ Báo cáo: Tuyệt đối không có mục 6 trở lên
+      if (finalText.trim()) {
+        const lines = finalText.split("\n");
+        const cleaned: string[] = [];
+        let skippingExtra = false;
+        for (const line of lines) {
+          const m = line.match(/^(\d+)[\.\:]/);
+          if (m && parseInt(m[1], 10) >= 6) {
+            skippingExtra = true;
+            continue;
+          }
+          if (m && parseInt(m[1], 10) <= 5) {
+            skippingExtra = false;
+          }
+          if (!skippingExtra) {
+            cleaned.push(line);
+          }
+        }
+        const cleanedText = cleaned.join("\n").trim();
+        setFinalText(cleanedText);
+        if (cleanedText) {
+          renderLiveImageApi({
+            content: cleanedText,
+            title: getShortCaption("report", reportDate),
+          })
+            .then((res) => setPreviewImageUrl(res.image_data_url))
+            .catch(() => {});
+        }
+      }
+    } else {
+      if (finalText.trim()) {
+        renderLiveImageApi({
+          content: finalText,
+          title: getShortCaption("plan", reportDate),
+        })
+          .then((res) => setPreviewImageUrl(res.image_data_url))
+          .catch(() => {});
+      }
+    }
+  };
+
   return (
     <div className="w-full flex flex-col lg:grid lg:grid-cols-12 gap-4 sm:gap-6 select-none">
       {/* MOBILE SEGMENTED CONTROL (< lg screens) */}
@@ -736,7 +840,7 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
               <div className="grid grid-cols-2 p-1 bg-black/40 border border-white/[0.06] rounded-xl gap-1">
                 <button
                   type="button"
-                  onClick={() => setMode("plan")}
+                  onClick={() => handleSwitchMode("plan")}
                   className={cn(
                     "flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer",
                     mode === "plan"
@@ -750,7 +854,7 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
 
                 <button
                   type="button"
-                  onClick={() => setMode("report")}
+                  onClick={() => handleSwitchMode("report")}
                   className={cn(
                     "flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer",
                     mode === "report"
@@ -878,32 +982,6 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
                   </>
                 )}
               </button>
-
-              {/* NÚT THÊM ĐẦU VIỆC BỔ SUNG TRONG KẾ HOẠCH BẰNG POP-UP */}
-              {mode === "plan" && (
-                <div className="flex flex-col gap-2 pt-2 border-t border-white/[0.08]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-blue-300 flex items-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-                      <span>Thêm đầu việc ngoài 5 mục chuẩn:</span>
-                    </span>
-                    {currentTotalSections > 5 && (
-                      <span className="text-[10px] text-cyan-400 font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20">
-                        Đang có {currentTotalSections} mục
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleOpenAddSectionModal}
-                    className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600/15 via-indigo-600/15 to-purple-600/15 hover:from-blue-600/25 hover:to-purple-600/25 text-blue-200 border border-blue-500/30 hover:border-blue-400/50 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer group"
-                  >
-                    <PlusCircle className="h-4 w-4 text-blue-400 group-hover:scale-110 transition-transform" />
-                    <span>+ Thêm đầu việc #{nextSectionNum} vào kế hoạch (Mở Pop-up)</span>
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
@@ -1068,7 +1146,7 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
             <div className="flex items-center justify-between flex-wrap gap-2">
               <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5">
                 <FileText className="h-3.5 w-3.5 text-blue-400" />
-                <span>Nội dung văn bản chuẩn bị gửi ({currentTotalSections} mục):</span>
+                <span>Nội dung văn bản chuẩn bị gửi ({mode === "report" ? 5 : currentTotalSections} mục):</span>
               </label>
               <div className="flex items-center gap-2">
                 {mode === "plan" && (
@@ -1120,19 +1198,9 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
             {finalText && (
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1 text-[11px]">
                 <span className="text-neutral-400">
-                  💡 Bạn có thể trực tiếp sửa văn bản ở trên hoặc bấm nút thêm mục.
+                  💡 Bạn có thể trực tiếp sửa văn bản ở trên, ảnh thẻ sẽ tự động cập nhật ngay.
                 </span>
                 <div className="flex items-center gap-2">
-                  {mode === "plan" && (
-                    <button
-                      type="button"
-                      onClick={handleOpenAddSectionModal}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-lg font-medium transition-all cursor-pointer shrink-0"
-                    >
-                      <PlusCircle className="h-3.5 w-3.5 text-blue-400" />
-                      <span>+ Thêm mục #{nextSectionNum}</span>
-                    </button>
-                  )}
                   <button
                     type="button"
                     onClick={handleUpdateImageFromFinalText}
@@ -1147,7 +1215,7 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
                     ) : (
                       <>
                         <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-                        <span>Cập nhật ảnh theo văn bản vừa sửa</span>
+                        <span>Cập nhật ảnh ngay</span>
                       </>
                     )}
                   </button>

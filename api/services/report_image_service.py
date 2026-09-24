@@ -144,12 +144,18 @@ def _parse_content_5_sections(text: str, fallback_title: str = "") -> Tuple[str,
 
         extra_match = re.match(r"^([6-9]|\d{2,})[\.\:\)\-\s]+(.+)$", clean)
         if extra_match:
-            sec_num = extra_match.group(1)
-            sec_title = extra_match.group(2).strip()
-            new_extra = {"num": sec_num, "title": sec_title, "items": []}
-            extra_sections.append(new_extra)
-            current_key = f"extra_{len(extra_sections)-1}"
-            continue
+            if is_plan_mode:
+                sec_num = extra_match.group(1)
+                sec_title = extra_match.group(2).strip()
+                new_extra = {"num": sec_num, "title": sec_title, "items": []}
+                extra_sections.append(new_extra)
+                current_key = f"extra_{len(extra_sections)-1}"
+                continue
+            else:
+                # Chế độ Báo cáo: Gom việc phát sinh vào mục 5 (Công việc tồn đọng), tuyệt đối không có mục 6
+                current_key = "5"
+                sections_map["5"]["items"].append(clean)
+                continue
 
         if current_key is not None:
             item_text = re.sub(r"^[\-\•\*\+\>\–\—\d+\.]\s*", "", clean).strip()
@@ -175,21 +181,22 @@ def _parse_content_5_sections(text: str, fallback_title: str = "") -> Tuple[str,
         sections_map["4"],
         sections_map["5"],
     ]
-    final_sections.extend(extra_sections)
+    if is_plan_mode:
+        final_sections.extend(extra_sections)
 
     return main_title, final_sections
 
 
 SECTION_PALETTE = {
-    "1": {"badge_bg": (245, 158, 11, 45), "badge_border": (245, 158, 11, 140), "badge_text": (251, 191, 36)},
-    "2": {"badge_bg": (59, 130, 246, 45), "badge_border": (59, 130, 246, 140), "badge_text": (96, 165, 250)},
-    "3": {"badge_bg": (139, 92, 246, 45), "badge_border": (139, 92, 246, 140), "badge_text": (167, 139, 250)},
-    "4": {"badge_bg": (16, 185, 129, 45), "badge_border": (16, 185, 129, 140), "badge_text": (52, 211, 153)},
-    "5": {"badge_bg": (244, 63, 94, 45), "badge_border": (244, 63, 94, 140), "badge_text": (251, 113, 133)},
-    "6": {"badge_bg": (6, 182, 212, 45), "badge_border": (6, 182, 212, 140), "badge_text": (34, 211, 238)},
-    "7": {"badge_bg": (236, 72, 153, 45), "badge_border": (236, 72, 153, 140), "badge_text": (244, 114, 182)},
-    "8": {"badge_bg": (20, 184, 166, 45), "badge_border": (20, 184, 166, 140), "badge_text": (45, 212, 191)},
-    "default": {"badge_bg": (99, 102, 241, 45), "badge_border": (99, 102, 241, 140), "badge_text": (129, 140, 248)},
+    "1": {"badge_bg": (217, 119, 6, 255), "badge_border": (251, 191, 36, 255)},   # 1. Amber (Chốt đơn)
+    "2": {"badge_bg": (37, 99, 235, 255), "badge_border": (96, 165, 250, 255)},   # 2. Blue (Gặp mặt)
+    "3": {"badge_bg": (124, 58, 237, 255), "badge_border": (167, 139, 250, 255)}, # 3. Purple (Gửi mẫu)
+    "4": {"badge_bg": (16, 185, 129, 255), "badge_border": (52, 211, 153, 255)},  # 4. Emerald (Liên hệ)
+    "5": {"badge_bg": (225, 29, 72, 255), "badge_border": (251, 113, 133, 255)},  # 5. Rose (Tồn đọng / Đăng bài)
+    "6": {"badge_bg": (8, 145, 178, 255), "badge_border": (34, 211, 238, 255)},   # 6. Cyan (To-do #1)
+    "7": {"badge_bg": (219, 39, 119, 255), "badge_border": (244, 114, 182, 255)}, # 7. Pink (To-do #2)
+    "8": {"badge_bg": (79, 70, 229, 255), "badge_border": (129, 140, 248, 255)},  # 8. Indigo (To-do #3)
+    "default": {"badge_bg": (13, 148, 136, 255), "badge_border": (45, 212, 191, 255)}, # Teal
 }
 
 
@@ -212,7 +219,7 @@ def render_report_image(
 
     font_title = _get_font(42, weight="bold")
     font_sec_title = _get_font(25, weight="semi")
-    font_sec_num = _get_font(21, weight="bold")
+    font_sec_num = _get_font(23, weight="bold")
     font_item = _get_font(22, weight="regular")
     font_tag = _get_font(17, weight="bold")
     font_zero = _get_font(22, weight="regular")
@@ -296,14 +303,14 @@ def render_report_image(
         draw.rounded_rectangle([PAD_X, curr_y, PAD_X + CARD_W, curr_y + card_h], radius=16, fill=(24, 27, 41, 235), outline=(255, 255, 255, 22), width=1)
 
         b_x, b_y = PAD_X + 20, curr_y + 16
-        b_size = 34
-        draw.rounded_rectangle([b_x, b_y, b_x + b_size, b_y + b_size], radius=10, fill=palette["badge_bg"], outline=palette["badge_border"], width=1)
+        b_size = 36
+        draw.rounded_rectangle([b_x, b_y, b_x + b_size, b_y + b_size], radius=9, fill=palette["badge_bg"], outline=palette["badge_border"], width=1)
 
-        nbox = draw.textbbox((0, 0), num, font=font_sec_num)
+        nbox = draw.textbbox((0, 0), num, font=font_sec_num, stroke_width=1)
         nw, nh = nbox[2] - nbox[0], nbox[3] - nbox[1]
         nx = b_x + (b_size - nw) // 2
         ny = b_y + (b_size - nh) // 2 - 2
-        draw.text((nx, ny), num, font=font_sec_num, fill=palette["badge_text"])
+        draw.text((nx, ny), num, font=font_sec_num, fill=(255, 255, 255, 255), stroke_width=1, stroke_fill=(255, 255, 255, 255))
 
         stitle_x = b_x + b_size + 14
         stitle_y = b_y + 3
