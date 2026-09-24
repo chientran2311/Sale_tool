@@ -45,7 +45,7 @@ QUY TẮC BẮT BUỘC:
    4. Liên hệ khách hàng
    {sec_5_title}
 3. Dưới mỗi mục, nếu có thông tin thì gạch đầu dòng ngắn gọn, súc tích, chuyên nghiệp. Nếu hoàn toàn không có thông tin trong nội dung người dùng cung cấp thì CHỈ GHI DUY NHẤT một số 0.
-4. Tuyệt đối không thêm bất kỳ mục nào khác ngoài 5 mục trên.
+{extra_rule}
 """
 
 
@@ -74,14 +74,17 @@ async def generate_standardized_report(
     if mode == "plan":
         sec_5_title = "5. Đăng bài"
         sec_5_desc = "[Kế hoạch đăng bài Facebook/Zalo/Tiktok, nội dung, sản phẩm... Nếu không có ghi số: 0]"
+        extra_rule = "4. NẾU trong nội dung người dùng có đề cập đến các công việc, to-do hoặc nhiệm vụ khác (ngoài 5 mục trên), hãy tiếp tục đánh số các mục tiếp theo: 6. [Tên việc], 7. [Tên việc]... kèm nội dung chi tiết. Nếu không có việc bổ sung nào thì chỉ dừng lại ở 5 mục."
     else:
         sec_5_title = "5. Công việc tồn đọng"
         sec_5_desc = "[Việc chưa giải quyết xong, cần theo dõi tiếp... Nếu không có ghi số: 0]"
+        extra_rule = "4. Tuyệt đối không thêm bất kỳ mục nào khác ngoài 5 mục trên."
 
     system_instruction = STANDARD_5_SECTIONS_PROMPT.format(
         header_title=header_title,
         sec_5_title=sec_5_title,
         sec_5_desc=sec_5_desc,
+        extra_rule=extra_rule,
     )
 
     user_message = (

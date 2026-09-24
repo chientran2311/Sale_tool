@@ -65,15 +65,21 @@ interface ReportStudioProps {
   initialTranscriptText?: string;
 }
 
+const getTodayLocalDateStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) {
   const initialDraft = loadSavedDraft();
 
-  // 1. Chế độ & Ngày tháng
+  // 1. Chế độ & Ngày tháng (luôn mặc định theo ngày hiện tại now())
   const [mode, setMode] = useState<ReportMode>(() => initialDraft?.mode || "report");
   const [reportDate, setReportDate] = useState<string>(() => {
-    if (initialDraft?.reportDate) return initialDraft.reportDate;
-    const today = new Date();
-    return today.toISOString().split("T")[0];
+    return getTodayLocalDateStr();
   });
 
   // Phương thức nhập: "ai_auto" (Nhập thô & AI tóm tắt) vs "manual_5" (Tự điền 5 ô)
@@ -236,17 +242,60 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
         content: rawInput.trim(),
       });
 
-      // Cập nhật bản text chuẩn 5 mục
-      setFinalText(res.summary_text);
-      // Cập nhật ảnh tương ứng và GIỮ NGUYÊN không bị trôi
-      setPreviewImageUrl(res.image_data_url);
+      let fullText = res.summary_text;
+
+      // Nếu ở chế độ Kế hoạch và có thêm To-do list bổ sung (việc thứ 6, 7...)
+      if (mode === "plan" && extraTodos.length > 0) {
+        const matches = fullText.match(/^(\d+)[\.\:]/gm) || [];
+        const nums = matches
+          .map((m) => parseInt(m.replace(/\D/g, "")))
+          .filter((n) => !isNaN(n));
+        let nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 6;
+
+        let appended = false;
+        extraTodos.forEach((todo) => {
+          if (todo.title.trim() || todo.note.trim()) {
+            fullText += `\n\n${nextNum}. ${todo.title.trim() || `Công việc #${nextNum}`}\n`;
+            const lines = todo.note
+              .split("\n")
+              .map((l) => l.trim())
+              .filter(Boolean);
+            if (lines.length > 0) {
+              lines.forEach((l) => {
+                fullText += `• ${l}\n`;
+              });
+            } else {
+              fullText += "• 0\n";
+            }
+            nextNum++;
+            appended = true;
+          }
+        });
+
+        if (appended) {
+          fullText = fullText.trim();
+          const imgRes = await renderLiveImageApi({
+            content: fullText,
+            title: currentCaption,
+          });
+          setPreviewImageUrl(imgRes.image_data_url);
+        } else {
+          setPreviewImageUrl(res.image_data_url);
+        }
+      } else {
+        setPreviewImageUrl(res.image_data_url);
+      }
+
+      setFinalText(fullText);
       setPreviewSource("ai");
-      // Tự động chuyển sang xem ảnh trên giao diện mobile
       setMobileTab("preview");
 
       setStatusMessage({
         type: "success",
-        text: "AI đã chuẩn hóa thành công 5 mục và cập nhật ảnh báo cáo!",
+        text:
+          mode === "plan"
+            ? "AI đã chuẩn hóa kế hoạch và cập nhật ảnh thẻ!"
+            : "AI đã chuẩn hóa thành công 5 mục và cập nhật ảnh báo cáo!",
       });
     } catch (err: any) {
       const errorMsg =
@@ -254,6 +303,42 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
       setStatusMessage({ type: "error", text: String(errorMsg) });
     } finally {
       setIsGeneratingAi(false);
+    }
+  };
+
+  // 1b. Hành động: "Cập nhật ảnh từ văn bản đã chỉnh sửa"
+  const [isUpdatingImage, setIsUpdatingImage] = useState(false);
+  const handleUpdateImageFromFinalText = async () => {
+    if (!finalText.trim()) {
+      setStatusMessage({
+        type: "error",
+        text: "Vui lòng nhập nội dung văn bản trước khi cập nhật ảnh!",
+      });
+      return;
+    }
+
+    setIsUpdatingImage(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await renderLiveImageApi({
+        content: finalText.trim(),
+        title: currentCaption,
+      });
+
+      setPreviewImageUrl(res.image_data_url);
+      setMobileTab("preview");
+
+      setStatusMessage({
+        type: "success",
+        text: "Đã cập nhật lại ảnh thẻ theo văn bản bạn vừa sửa!",
+      });
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.detail || err?.message || "Lỗi khi render ảnh từ văn bản";
+      setStatusMessage({ type: "error", text: String(errorMsg) });
+    } finally {
+      setIsUpdatingImage(false);
     }
   };
 
@@ -616,15 +701,90 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
                 {isGeneratingAi ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>AI đang đọc hiểu và chuẩn hóa 5 mục...</span>
+                    <span>
+                      {mode === "plan"
+                        ? "AI đang đọc hiểu và chuẩn hóa kế hoạch..."
+                        : "AI đang đọc hiểu và chuẩn hóa 5 mục..."}
+                    </span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4" />
-                    <span>Tạo nội dung bằng AI (Chuẩn hóa đúng 5 mục)</span>
+                    <span>
+                      {mode === "plan"
+                        ? "Tạo kế hoạch bằng AI"
+                        : "Tạo nội dung bằng AI (Chuẩn hóa đúng 5 mục)"}
+                    </span>
                   </>
                 )}
               </button>
+
+              {/* TO-DO LIST BỔ SUNG TRONG CHẾ ĐỘ KẾ HOẠCH (KỂ CẢ KHI DÙNG AI) */}
+              {mode === "plan" && (
+                <div className="flex flex-col gap-2.5 pt-2 border-t border-white/[0.08]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-blue-300 flex items-center gap-1.5">
+                      <ListPlus className="h-3.5 w-3.5 text-blue-400" />
+                      <span>Thêm công việc ngoài 5 mục (To-do list):</span>
+                    </span>
+                    <span className="text-[10px] text-neutral-400">
+                      {extraTodos.length > 0 ? `${extraTodos.length} việc đã thêm` : "Tùy chọn"}
+                    </span>
+                  </div>
+
+                  {extraTodos.map((todo, idx) => {
+                    const itemNum = 6 + idx;
+                    return (
+                      <div
+                        key={todo.id}
+                        className="flex flex-col gap-2 p-2.5 rounded-xl bg-black/40 border border-white/[0.08]"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-blue-400 flex items-center gap-1.5">
+                            <span className="h-5 w-5 rounded bg-blue-500/20 text-blue-300 flex items-center justify-center text-[11px] font-bold">
+                              {itemNum}
+                            </span>
+                            <span>Công việc #{itemNum}:</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTodo(todo.id)}
+                            className="text-neutral-500 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
+                            title="Xóa công việc này"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={todo.title}
+                          onChange={(e) => handleUpdateTodo(todo.id, "title", e.target.value)}
+                          placeholder={`Tiêu đề việc #${itemNum} (vd: Đăng bài nhóm sỉ, Kiểm kho...)`}
+                          className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-blue-500 placeholder:text-neutral-500 placeholder:text-xs"
+                        />
+
+                        <textarea
+                          rows={2}
+                          value={todo.note}
+                          onChange={(e) => handleUpdateTodo(todo.id, "note", e.target.value)}
+                          placeholder="Ghi chú chi tiết cho việc này..."
+                          className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-sm sm:text-xs text-white focus:outline-none focus:border-blue-500 placeholder:text-neutral-500 placeholder:text-xs leading-relaxed resize-y"
+                        />
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={handleAddTodo}
+                    className="w-full py-2.5 px-4 border-2 border-dashed border-white/20 hover:border-blue-500/50 hover:bg-blue-500/5 text-neutral-400 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4 text-blue-400" />
+                    <span>+ Thêm việc mới vào kế hoạch (To-do list)</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -813,17 +973,43 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
             </div>
 
             <textarea
-              rows={6}
-              readOnly
+              rows={8}
               value={finalText}
-              placeholder="Văn bản chuẩn 5 mục (do AI gen hoặc do bạn vừa tạo từ 5 ô) sẽ xuất hiện tại đây và giữ cố định..."
+              onChange={(e) => setFinalText(e.target.value)}
+              placeholder="Văn bản chuẩn (do AI gen hoặc tự tạo) sẽ xuất hiện tại đây. Bạn có thể tự do gõ sửa, thêm dòng, chỉnh giá/số lượng trực tiếp tại đây..."
               className={cn(
-                "w-full rounded-xl p-3 text-sm sm:text-xs font-sans resize-none transition-colors leading-relaxed border select-text cursor-default",
+                "w-full rounded-xl p-3 text-sm sm:text-xs font-sans resize-y transition-colors leading-relaxed border select-text focus:outline-none focus:border-blue-500",
                 finalText
-                  ? "bg-black/60 border-blue-500/30 text-neutral-100"
+                  ? "bg-black/60 border-blue-500/40 text-neutral-100"
                   : "bg-black/20 border-white/[0.04] text-neutral-600 placeholder-neutral-600"
               )}
             />
+
+            {finalText && (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1 text-[11px]">
+                <span className="text-neutral-400">
+                  💡 Bạn có thể trực tiếp sửa văn bản ở trên.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleUpdateImageFromFinalText}
+                  disabled={isUpdatingImage}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-lg font-medium transition-all cursor-pointer shrink-0"
+                >
+                  {isUpdatingImage ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Đang cập nhật ảnh...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3.5 w-3.5 text-blue-400" />
+                      <span>Cập nhật ảnh theo văn bản vừa sửa</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Thông báo trạng thái */}
