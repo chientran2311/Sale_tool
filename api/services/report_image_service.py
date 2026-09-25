@@ -5,38 +5,51 @@ import base64
 from typing import List, Tuple, Dict, Any, Optional
 from PIL import Image, ImageDraw, ImageFont
 
-# Thư mục fonts nội bộ của dự án
-ASSETS_FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts")
-FONT_REG_PATH = os.path.join(ASSETS_FONT_DIR, "BeVietnamPro-Regular.ttf")
-FONT_SEMI_PATH = os.path.join(ASSETS_FONT_DIR, "BeVietnamPro-SemiBold.ttf")
-FONT_BOLD_PATH = os.path.join(ASSETS_FONT_DIR, "BeVietnamPro-Bold.ttf")
-
-FALLBACK_SYSTEM_REGULAR = [
-    r"C:\Windows\Fonts\segoeui.ttf",
-    r"C:\Windows\Fonts\arial.ttf",
-    r"C:\Windows\Fonts\calibri.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-]
-FALLBACK_SYSTEM_BOLD = [
-    r"C:\Windows\Fonts\segoeuib.ttf",
-    r"C:\Windows\Fonts\arialbd.ttf",
-    r"C:\Windows\Fonts\calibrib.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-]
-
-
+# Danh sách các thư mục font ứng viên (hỗ trợ cả Local Windows và Vercel Linux Serverless)
 def _get_font(size: int, weight: str = "regular") -> ImageFont.ImageFont:
     """Tải font BeVietnamPro (tối ưu tiếng Việt), tự động fallback nếu thiếu."""
-    target_path = FONT_BOLD_PATH if weight == "bold" else (FONT_SEMI_PATH if weight == "semi" else FONT_REG_PATH)
-    if os.path.exists(target_path):
-        try:
-            return ImageFont.truetype(target_path, size=size)
-        except Exception:
-            pass
+    candidate_dirs = [
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts"),
+        os.path.join(os.path.dirname(__file__), "..", "assets", "fonts"),
+        os.path.join(os.getcwd(), "api", "assets", "fonts"),
+        os.path.join(os.getcwd(), "assets", "fonts"),
+        "/var/task/api/assets/fonts",
+        r"C:\Project Code\sale_tool\api\assets\fonts",
+    ]
 
-    fallbacks = FALLBACK_SYSTEM_BOLD if weight in ("bold", "semi") else FALLBACK_SYSTEM_REGULAR
+    font_file_map = {
+        "bold": "BeVietnamPro-Bold.ttf",
+        "semi": "BeVietnamPro-SemiBold.ttf",
+        "regular": "BeVietnamPro-Regular.ttf",
+    }
+
+    fname = font_file_map.get(weight, "BeVietnamPro-Regular.ttf")
+    for fdir in candidate_dirs:
+        fpath = os.path.join(fdir, fname)
+        if os.path.exists(fpath):
+            try:
+                return ImageFont.truetype(fpath, size=size)
+            except Exception:
+                pass
+
+    fallbacks_bold = [
+        r"C:\Windows\Fonts\segoeuib.ttf",
+        r"C:\Windows\Fonts\arialbd.ttf",
+        r"C:\Windows\Fonts\calibrib.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+    ]
+    fallbacks_regular = [
+        r"C:\Windows\Fonts\segoeui.ttf",
+        r"C:\Windows\Fonts\arial.ttf",
+        r"C:\Windows\Fonts\calibri.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    ]
+
+    fallbacks = fallbacks_bold if weight in ("bold", "semi") else fallbacks_regular
     for fb in fallbacks:
         if os.path.exists(fb):
             try:
@@ -70,7 +83,7 @@ def _wrap_text_lines(text: str, font: ImageFont.ImageFont, max_w: int, draw: Ima
     return lines
 
 
-# Danh mục từ khóa nhận diện tiêu đề của 5 mục chuẩn
+# 5 mục cố định chuẩn
 STANDARD_SECTION_KEYWORDS = {
     "1": (["chốt đơn", "chot don"], "Chốt đơn"),
     "2": (["gặp mặt", "gap mat"], "Gặp mặt"),
@@ -79,8 +92,28 @@ STANDARD_SECTION_KEYWORDS = {
     "5": (["tồn đọng", "ton dong", "đăng bài", "dang bai"], "Công việc tồn đọng"),
 }
 
+# Bảng màu Enterprise hiện đại cho từng mục
+SECTION_PALETTES = {
+    "1": {"bg": (217, 119, 6), "border": (251, 191, 36), "name": "Chốt đơn"},
+    "2": {"bg": (37, 99, 235), "border": (96, 165, 250), "name": "Gặp mặt"},
+    "3": {"bg": (124, 58, 237), "border": (167, 139, 250), "name": "Gửi mẫu, cắt mẫu"},
+    "4": {"bg": (5, 150, 105), "border": (52, 211, 153), "name": "Liên hệ"},
+    "5": {"bg": (225, 29, 72), "border": (251, 113, 133), "name": "Tồn đọng/Đăng bài"},
+    "6": {"bg": (8, 145, 178), "border": (34, 211, 238), "name": "To-do #6"},
+    "7": {"bg": (219, 39, 119), "border": (244, 114, 182), "name": "To-do #7"},
+    "8": {"bg": (79, 70, 229), "border": (129, 140, 248), "name": "To-do #8"},
+    "9": {"bg": (13, 148, 136), "border": (45, 212, 191), "name": "To-do #9"},
+    "default": {"bg": (71, 85, 105), "border": (148, 163, 184), "name": "Mục"},
+}
+
 
 def _parse_content_5_sections(text: str, fallback_title: str = "") -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Phân tách nội dung thành:
+    - Tiêu đề H1 (vd: Báo cáo 24/09 hoặc Kế hoạch 25/09)
+    - 5 mục chuẩn
+    - Các mục bổ sung (To-do list mục 6, 7, 8...) nếu có.
+    """
     raw_lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
     main_title = ""
 
@@ -95,148 +128,142 @@ def _parse_content_5_sections(text: str, fallback_title: str = "") -> Tuple[str,
         "5": {"num": "5", "title": default_sec5_title, "items": []},
     }
 
-    extra_sections: List[Dict[str, Any]] = []
-    current_key: Optional[str] = None
-    first_line_seen = False
-
-    header_patterns = [
-        re.compile(r"^#+\s*(.+)$"),
-        re.compile(r"^\*\*(.+?)\*\*$"),
-        re.compile(r"^(báo cáo\s+\d+[\/\-]\d+|kế hoạch\s+\d+[\/\-]\d+)", re.IGNORECASE),
-    ]
+    current_num = None
+    extra_sections_order: List[str] = []
 
     for line in raw_lines:
-        clean = line.replace("*", "").replace("#", "").strip()
-
-        if not first_line_seen:
-            first_line_seen = True
-            is_title = False
-            for pat in header_patterns:
-                m = pat.match(line)
-                if m:
-                    main_title = clean
-                    is_title = True
-                    break
-            if is_title:
-                continue
-
-        matched_key = None
-        for key, (kw_list, canonical_title) in STANDARD_SECTION_KEYWORDS.items():
-            pattern = rf"^({key}[\.\:\)\-\s]+)(.*)$"
-            m = re.match(pattern, clean, re.IGNORECASE)
-            if m:
-                rest_of_line = m.group(2).strip().lower()
-                for kw in kw_list:
-                    if kw in rest_of_line or rest_of_line.startswith(kw):
-                        matched_key = key
-                        if key == "5":
-                            if "đăng bài" in rest_of_line or "dang bai" in rest_of_line:
-                                sections_map["5"]["title"] = "Đăng bài"
-                            elif "tồn đọng" in rest_of_line or "ton dong" in rest_of_line:
-                                sections_map["5"]["title"] = "Công việc tồn đọng"
-                        break
-            if matched_key:
-                break
-
-        if matched_key:
-            current_key = matched_key
+        if not main_title and (
+            line.lower().startswith("báo cáo")
+            or line.lower().startswith("kế hoạch")
+            or line.lower().startswith("tiêu đề:")
+            or line.startswith("# ")
+        ):
+            main_title = line.replace("Tiêu đề:", "").replace("#", "").strip()
             continue
 
-        extra_match = re.match(r"^([6-9]|\d{2,})[\.\:\)\-\s]+(.+)$", clean)
-        if extra_match:
-            if is_plan_mode:
-                sec_num = extra_match.group(1)
-                sec_title = extra_match.group(2).strip()
-                new_extra = {"num": sec_num, "title": sec_title, "items": []}
-                extra_sections.append(new_extra)
-                current_key = f"extra_{len(extra_sections)-1}"
-                continue
-            else:
-                # Chế độ Báo cáo: Gom việc phát sinh vào mục 5 (Công việc tồn đọng), tuyệt đối không có mục 6
-                current_key = "5"
-                sections_map["5"]["items"].append(clean)
-                continue
+        match_header = re.match(r"^(?:###\s*)?(\d+)[\.\:\)]\s*(.*)$", line)
+        is_header = False
 
-        if current_key is not None:
-            item_text = re.sub(r"^[\-\•\*\+\>\–\—\d+\.]\s*", "", clean).strip()
-            if not item_text:
-                item_text = clean
-            if item_text:
-                if current_key.startswith("extra_"):
-                    idx = int(current_key.split("_")[1])
-                    extra_sections[idx]["items"].append(item_text)
+        if match_header:
+            num = match_header.group(1)
+            rest = match_header.group(2).strip()
+            rest_lower = rest.lower()
+
+            if num in STANDARD_SECTION_KEYWORDS:
+                keywords, default_title = STANDARD_SECTION_KEYWORDS[num]
+                if any(kw in rest_lower for kw in keywords):
+                    is_header = True
+                    current_num = num
+                    if num == "5":
+                        if "đăng bài" in rest_lower or "dang bai" in rest_lower:
+                            sections_map["5"]["title"] = "Đăng bài"
+                        else:
+                            sections_map["5"]["title"] = "Công việc tồn đọng"
+                    else:
+                        sections_map[num]["title"] = default_title
+            elif int(num) >= 6 and rest:
+                if is_plan_mode:
+                    is_header = True
+                    current_num = num
+                    if num not in sections_map:
+                        sections_map[num] = {"num": num, "title": rest, "items": []}
+                        extra_sections_order.append(num)
                 else:
-                    sections_map[current_key]["items"].append(item_text)
-        else:
-            if not main_title and any(k in clean.lower() for k in ["báo cáo", "kế hoạch"]):
-                main_title = clean
+                    current_num = "5"
+                    sections_map["5"]["items"].append(f"- {rest}")
+
+        if is_header:
+            continue
+
+        if current_num and current_num in sections_map:
+            sections_map[current_num]["items"].append(line)
 
     if not main_title:
-        main_title = fallback_title or "Báo cáo công việc"
+        main_title = fallback_title or ("Kế hoạch công việc" if is_plan_mode else "Báo cáo công việc")
 
-    final_sections = [
-        sections_map["1"],
-        sections_map["2"],
-        sections_map["3"],
-        sections_map["4"],
-        sections_map["5"],
-    ]
-    if is_plan_mode:
-        final_sections.extend(extra_sections)
+    sections_list = []
+    allowed_extras = extra_sections_order if is_plan_mode else []
+    for num_str in ["1", "2", "3", "4", "5"] + allowed_extras:
+        sec = sections_map[num_str]
+        if not sec["items"]:
+            if int(num_str) >= 6 and sec["title"]:
+                # Nếu người dùng chỉ gõ dòng '6. Nội dung công việc...', chuyển thành item
+                sec["items"] = [sec["title"]]
+                sec["title"] = f"Công việc #{num_str}"
+            else:
+                sec["items"] = ["0"]
+        sections_list.append(sec)
 
-    return main_title, final_sections
-
-
-SECTION_PALETTE = {
-    "1": {"badge_bg": (217, 119, 6, 255), "badge_border": (251, 191, 36, 255)},   # 1. Amber (Chốt đơn)
-    "2": {"badge_bg": (37, 99, 235, 255), "badge_border": (96, 165, 250, 255)},   # 2. Blue (Gặp mặt)
-    "3": {"badge_bg": (124, 58, 237, 255), "badge_border": (167, 139, 250, 255)}, # 3. Purple (Gửi mẫu)
-    "4": {"badge_bg": (16, 185, 129, 255), "badge_border": (52, 211, 153, 255)},  # 4. Emerald (Liên hệ)
-    "5": {"badge_bg": (225, 29, 72, 255), "badge_border": (251, 113, 133, 255)},  # 5. Rose (Tồn đọng / Đăng bài)
-    "6": {"badge_bg": (8, 145, 178, 255), "badge_border": (34, 211, 238, 255)},   # 6. Cyan (To-do #1)
-    "7": {"badge_bg": (219, 39, 119, 255), "badge_border": (244, 114, 182, 255)}, # 7. Pink (To-do #2)
-    "8": {"badge_bg": (79, 70, 229, 255), "badge_border": (129, 140, 248, 255)},  # 8. Indigo (To-do #3)
-    "default": {"badge_bg": (13, 148, 136, 255), "badge_border": (45, 212, 191, 255)}, # Teal
-}
+    return main_title, sections_list
 
 
 def render_report_image(
-    content: str,
+    content: str = "",
     title: Optional[str] = None,
-    sections: Optional[List[Dict[str, Any]]] = None
+    sections: Optional[List[Dict[str, Any]]] = None,
+    assignee: str = "Chiến Trần",
+    subtitle: Optional[str] = None,
+    width: int = 880,
+    **kwargs,
 ) -> Tuple[bytes, str]:
+    """
+    Render ảnh thẻ Báo cáo / Kế hoạch chuẩn doanh nghiệp cao cấp:
+    - Nổi bật người phụ trách: Chiến Trần (trong badge header và signature footer)
+    - Giao diện Dark Mode Modern & Elegant (Attio Obsidian Enterprise)
+    - Card rõ ràng, phân cấp thị giác tinh tế, font tiếng Việt BeVietnamPro chuẩn.
+    """
+    # 1. Chuẩn hóa dữ liệu đầu vào
     if sections and len(sections) > 0:
         main_title = title or "Báo cáo công việc"
-        parsed_sections = sections
+        cleaned_sections = []
+        for s in sections:
+            num = str(s.get("num", ""))
+            t = str(s.get("title", ""))
+            raw_items = s.get("items", [])
+            items = [str(it).strip() for it in raw_items if str(it).strip()]
+            if not items:
+                items = ["0"]
+            cleaned_sections.append({"num": num, "title": t, "items": items})
+        parsed_sections = cleaned_sections
     else:
         main_title, parsed_sections = _parse_content_5_sections(content, fallback_title=title or "")
 
+    if title:
+        main_title = title
+
     clean_title = main_title.replace("#", "").replace("*", "").strip()
 
-    IMG_W = 1080
-    PAD_X = 54
+    # Layout constants
+    IMG_W = width
+    PAD_X = 40
     CARD_W = IMG_W - (PAD_X * 2)
 
-    font_title = _get_font(42, weight="bold")
-    font_sec_title = _get_font(25, weight="semi")
-    font_sec_num = _get_font(23, weight="bold")
-    font_item = _get_font(22, weight="regular")
-    font_tag = _get_font(17, weight="bold")
-    font_zero = _get_font(22, weight="regular")
+    # Fonts
+    f_h1 = _get_font(34, "bold")
+    f_meta_bold = _get_font(13, "bold")
+    f_meta_reg = _get_font(13, "regular")
+    f_sec_num = _get_font(17, "bold")
+    f_sec_title = _get_font(18, "semi")
+    f_badge_tag = _get_font(11, "bold")
+    f_body = _get_font(15, "regular")
+    f_body_bold = _get_font(15, "semi")
+    f_footer = _get_font(12, "regular")
+    f_footer_bold = _get_font(12, "bold")
 
     dummy_img = Image.new("RGB", (IMG_W, 200))
     dummy_draw = ImageDraw.Draw(dummy_img)
 
-    ITEM_TEXT_MAX_W = CARD_W - 84
-    computed_cards = []
+    ITEM_MAX_W = CARD_W - 64
 
+    # 2. Tính toán chiều cao các cards
+    computed_cards = []
     for sec in parsed_sections:
         num = str(sec.get("num", "•"))
         stitle = sec.get("title", f"Mục {num}")
         items = sec.get("items", [])
 
         is_zero = False
-        wrapped_lines: List[str] = []
+        parsed_items: List[Dict[str, Any]] = []
 
         if not items:
             is_zero = True
@@ -248,91 +275,208 @@ def render_report_image(
                 is_zero = True
             else:
                 for it in filtered_items:
-                    bullet_text = f"• {it.strip()}"
-                    wlines = _wrap_text_lines(bullet_text, font_item, ITEM_TEXT_MAX_W, dummy_draw)
-                    wrapped_lines.extend(wlines)
+                    raw_text = it.strip()
+                    if raw_text.startswith("- ") or raw_text.startswith("* "):
+                        raw_text = raw_text[2:].strip()
 
-        content_h = 28 if is_zero else max(28, len(wrapped_lines) * 32)
-        card_h = 18 + 36 + 12 + content_h + 18
+                    is_hl = raw_text.startswith("→") or raw_text.startswith("->") or "trọng tâm" in raw_text.lower()
+                    curr_font = f_body_bold if is_hl else f_body
+
+                    # Ngắt dòng theo text thực tế
+                    wlines = _wrap_text_lines(raw_text, curr_font, ITEM_MAX_W - 20, dummy_draw)
+                    parsed_items.append({
+                        "lines": wlines,
+                        "is_hl": is_hl,
+                    })
+
+        # Chiều cao card:
+        # Header: pad_top (14) + badge (30) + spacing (10) + divider (1) + spacing (10)
+        c_h = 14 + 30 + 10 + 1 + 10
+        if is_zero:
+            c_h += 26
+        else:
+            total_lines_count = sum(len(pi["lines"]) for pi in parsed_items)
+            c_h += total_lines_count * 26 + (len(parsed_items) - 1) * 6
+        c_h += 14  # bottom padding
+
         computed_cards.append({
             "num": num,
             "title": stitle,
             "is_zero": is_zero,
-            "lines": wrapped_lines,
-            "height": card_h
+            "items": parsed_items,
+            "item_count": len(parsed_items) if not is_zero else 0,
+            "height": c_h,
         })
 
-    HEADER_H = 175
-    FOOTER_H = 65
-    SPACING = 16
-    total_cards_h = sum(c["height"] for c in computed_cards) + (len(computed_cards) - 1) * SPACING
+    # Header & Footer dimensions
+    HEADER_H = 34 + 28 + 14 + 42 + 12 + 32 + 16 + 1 + 16
+    FOOTER_H = 58
+    CARD_SPACING = 14
+    total_cards_h = sum(c["height"] for c in computed_cards) + (len(computed_cards) - 1) * CARD_SPACING
     TOTAL_H = HEADER_H + total_cards_h + FOOTER_H
-    TOTAL_H = max(1120, TOTAL_H)
 
-    img = Image.new("RGBA", (IMG_W, TOTAL_H), (15, 17, 26, 255))
+    # 3. Canvas với gradient nền Dark Obsidian siêu sạch và mượt
+    img = Image.new("RGBA", (IMG_W, TOTAL_H), (11, 14, 23, 255))
     draw = ImageDraw.Draw(img, "RGBA")
 
+    # Gradient nền thanh lịch
     for y in range(TOTAL_H):
-        ratio = y / TOTAL_H
-        r = int(14 + (8 * (1 - ratio)))
-        g = int(16 + (9 * (1 - ratio)))
-        b = int(24 + (18 * (1 - ratio)))
+        ratio = y / float(TOTAL_H)
+        r = int(11 + 5 * ratio)
+        g = int(14 + 7 * ratio)
+        b = int(23 + 11 * ratio)
         draw.line([(0, y), (IMG_W, y)], fill=(r, g, b, 255))
 
-    draw.ellipse([-120, -120, 420, 420], fill=(59, 130, 246, 25))
-    draw.ellipse([IMG_W - 350, 40, IMG_W + 180, 560], fill=(139, 92, 246, 20))
+    # Top accent line 3px (Electric Blue -> Purple Indigo)
+    for y in range(3):
+        alpha = int(255 * (1 - y / 3.0) * 0.95)
+        draw.line([(0, y), (IMG_W // 2, y)], fill=(59, 130, 246, alpha))
+        draw.line([(IMG_W // 2, y), (IMG_W, y)], fill=(139, 92, 246, alpha))
 
-    tag_text = "ATTIO LUXURY DARK • SALES REPORT"
-    tag_x, tag_y = PAD_X, 48
-    draw.rounded_rectangle([tag_x, tag_y, tag_x + 360, tag_y + 32], radius=8, fill=(30, 41, 59, 220), outline=(59, 130, 246, 120), width=1)
-    draw.text((tag_x + 18, tag_y + 6), tag_text, font=font_tag, fill=(147, 197, 253))
+    # --- VẼ HEADER ---
+    curr_y = 34
 
-    title_y = tag_y + 44
-    draw.text((PAD_X, title_y), clean_title, font=font_title, fill=(255, 255, 255))
+    # Row 1: System Badges
+    tag1_w = 264
+    draw.rounded_rectangle(
+        [PAD_X, curr_y, PAD_X + tag1_w, curr_y + 28],
+        radius=7,
+        fill=(19, 27, 46, 240),
+        outline=(59, 130, 246, 110),
+        width=1,
+    )
+    draw.text((PAD_X + 14, curr_y + 6), "ATTIO ENTERPRISE  •  SALES CRM", font=f_badge_tag, fill=(147, 197, 253))
 
-    decor_line_y = title_y + 54
-    draw.rectangle([PAD_X, decor_line_y, PAD_X + 160, decor_line_y + 3], fill=(59, 130, 246, 255))
-    draw.rectangle([PAD_X + 165, decor_line_y, PAD_X + 220, decor_line_y + 3], fill=(139, 92, 246, 180))
+    tag2_text = "● NỘI BỘ DOANH NGHIỆP"
+    tb = draw.textbbox((0, 0), tag2_text, font=f_badge_tag)
+    tag2_w = (tb[2] - tb[0]) + 26
+    tag2_x = IMG_W - PAD_X - tag2_w
+    draw.rounded_rectangle(
+        [tag2_x, curr_y, tag2_x + tag2_w, curr_y + 28],
+        radius=7,
+        fill=(15, 30, 26, 230),
+        outline=(16, 185, 129, 110),
+        width=1,
+    )
+    draw.text((tag2_x + 13, curr_y + 6), tag2_text, font=f_badge_tag, fill=(52, 211, 153))
 
-    curr_y = HEADER_H
+    curr_y += 28 + 14
+
+    # Row 2: Title H1 Lớn Sắc Nét
+    draw.text((PAD_X, curr_y), clean_title.upper(), font=f_h1, fill=(255, 255, 255))
+    curr_y += 42 + 12
+
+    # Row 3: NỔI BẬT NGƯỜI PHỤ TRÁCH "CHIẾN TRẦN" & METADATA
+    assignee_name = assignee or "Chiến Trần"
+    assignee_tag = f"Phụ trách: {assignee_name}"
+    tb_as = draw.textbbox((0, 0), assignee_tag, font=f_meta_bold)
+    as_w = (tb_as[2] - tb_as[0]) + 28
+    as_h = 32
+
+    # Pill phụ trách màu sáng nổi bật
+    draw.rounded_rectangle(
+        [PAD_X, curr_y, PAD_X + as_w, curr_y + as_h],
+        radius=8,
+        fill=(25, 39, 70, 245),
+        outline=(96, 165, 250, 180),
+        width=1,
+    )
+    draw.text((PAD_X + 14, curr_y + 7), assignee_tag, font=f_meta_bold, fill=(255, 255, 255))
+
+    # Thông tin bổ trợ bên cạnh
+    sub_info = subtitle or "Báo cáo kinh doanh nội bộ  •  Tự động chuẩn hóa"
+    meta_x = PAD_X + as_w + 16
+    draw.text((meta_x, curr_y + 8), sub_info, font=f_meta_reg, fill=(148, 163, 184))
+
+    curr_y += as_h + 16
+
+    # Đường kẻ phân cách Header
+    draw.line([(PAD_X, curr_y), (IMG_W - PAD_X, curr_y)], fill=(32, 44, 68), width=1)
+    curr_y += 18
+
+    # --- VẼ CÁC CARDS MỤC (1 -> 5 & To-do) ---
     for c in computed_cards:
         num = c["num"]
         card_h = c["height"]
-        palette = SECTION_PALETTE.get(num, SECTION_PALETTE["default"])
+        palette = SECTION_PALETTES.get(num, SECTION_PALETTES["default"])
 
-        draw.rounded_rectangle([PAD_X, curr_y, PAD_X + CARD_W, curr_y + card_h], radius=16, fill=(24, 27, 41, 235), outline=(255, 255, 255, 22), width=1)
+        # Khung thẻ sang trọng
+        card_box = [PAD_X, curr_y, PAD_X + CARD_W, curr_y + card_h]
+        draw.rounded_rectangle(card_box, radius=12, fill=(16, 21, 35, 245), outline=(32, 43, 65, 255), width=1)
 
-        b_x, b_y = PAD_X + 20, curr_y + 16
-        b_size = 36
-        draw.rounded_rectangle([b_x, b_y, b_x + b_size, b_y + b_size], radius=9, fill=palette["badge_bg"], outline=palette["badge_border"], width=1)
+        # Badge số thứ tự
+        b_x = PAD_X + 16
+        b_y = curr_y + 12
+        b_size = 30
+        draw.rounded_rectangle([b_x, b_y, b_x + b_size, b_y + b_size], radius=8, fill=palette["bg"], outline=palette["border"], width=1)
 
-        nbox = draw.textbbox((0, 0), num, font=font_sec_num, stroke_width=1)
+        # Số căn giữa badge
+        nbox = draw.textbbox((0, 0), num, font=f_sec_num, stroke_width=1)
         nw, nh = nbox[2] - nbox[0], nbox[3] - nbox[1]
-        nx = b_x + (b_size - nw) // 2
-        ny = b_y + (b_size - nh) // 2 - 2
-        draw.text((nx, ny), num, font=font_sec_num, fill=(255, 255, 255, 255), stroke_width=1, stroke_fill=(255, 255, 255, 255))
+        draw.text((b_x + (b_size - nw) // 2, b_y + (b_size - nh) // 2 - 1), num, font=f_sec_num, fill=(255, 255, 255), stroke_width=1, stroke_fill=(255, 255, 255))
 
-        stitle_x = b_x + b_size + 14
-        stitle_y = b_y + 3
-        draw.text((stitle_x, stitle_y), c["title"], font=font_sec_title, fill=(248, 250, 252))
+        # Tiêu đề mục
+        title_x = b_x + b_size + 12
+        draw.text((title_x, b_y + 4), c["title"], font=f_sec_title, fill=(248, 250, 252))
 
-        div_y = b_y + b_size + 12
-        draw.line([(PAD_X + 20, div_y), (PAD_X + CARD_W - 20, div_y)], fill=(255, 255, 255, 12), width=1)
-
-        item_y = div_y + 12
+        # Chip số lượng bên phải
         if c["is_zero"]:
-            draw.text((PAD_X + 24, item_y), "• Không có (0)", font=font_zero, fill=(100, 116, 139))
+            chip_text = "0 phát sinh"
+            chip_color = (100, 116, 139)
         else:
-            for l in c["lines"]:
-                draw.text((PAD_X + 24, item_y), l, font=font_item, fill=(226, 232, 240))
-                item_y += 32
+            cnt = c["item_count"]
+            chip_text = f"{cnt} mục" if cnt > 1 else "1 mục"
+            chip_color = (148, 163, 184)
+        
+        tb_cp = draw.textbbox((0, 0), chip_text, font=f_badge_tag)
+        cp_w = (tb_cp[2] - tb_cp[0]) + 16
+        cp_x = PAD_X + CARD_W - 16 - cp_w
+        draw.rounded_rectangle([cp_x, b_y + 4, cp_x + cp_w, b_y + 26], radius=5, fill=(24, 32, 50, 200), outline=(40, 53, 78, 180), width=1)
+        draw.text((cp_x + 8, b_y + 7), chip_text, font=f_badge_tag, fill=chip_color)
 
-        curr_y += card_h + SPACING
+        # Đường gạch phân cách nhẹ giữa header thẻ và items
+        div_y = b_y + b_size + 10
+        draw.line([(PAD_X + 16, div_y), (PAD_X + CARD_W - 16, div_y)], fill=(26, 35, 52), width=1)
 
-    ft_y = TOTAL_H - 42
-    draw.text((PAD_X, ft_y), "Hệ thống Báo cáo Tự động • Attio AI Sales Assistant", font=font_tag, fill=(100, 116, 139))
-    draw.text((IMG_W - PAD_X - 180, ft_y), "Bảo mật & Chuẩn hóa", font=font_tag, fill=(71, 85, 105))
+        # Nội dung items
+        item_y = div_y + 10
 
+        if c["is_zero"]:
+            draw.text((PAD_X + 22, item_y), "•  Không có phát sinh trong kỳ (0)", font=f_body, fill=(100, 116, 139))
+        else:
+            for itm in c["items"]:
+                is_hl = itm["is_hl"]
+                fill_c = (56, 189, 248) if is_hl else (226, 232, 240)
+                f_use = f_body_bold if is_hl else f_body
+
+                for l_idx, line_str in enumerate(itm["lines"]):
+                    if l_idx == 0:
+                        bullet_char = "→" if is_hl else "•"
+                        bullet_fill = (56, 189, 248) if is_hl else (148, 163, 184)
+                        draw.text((PAD_X + 22, item_y), bullet_char, font=f_use, fill=bullet_fill)
+                        draw.text((PAD_X + 40, item_y), line_str, font=f_use, fill=fill_c)
+                    else:
+                        draw.text((PAD_X + 40, item_y), line_str, font=f_use, fill=fill_c)
+
+                    item_y += 26
+                item_y += 6
+
+        curr_y += card_h + CARD_SPACING
+
+    # --- VẼ FOOTER ---
+    curr_y += 6
+    draw.line([(PAD_X, curr_y), (IMG_W - PAD_X, curr_y)], fill=(30, 41, 59), width=1)
+    curr_y += 14
+
+    footer_left = "ATTIO ENTERPRISE CRM  •  HỆ THỐNG QUẢN LÝ KINH DOANH"
+    draw.text((PAD_X, curr_y), footer_left, font=f_footer, fill=(100, 116, 139))
+
+    footer_right = f"PHỤ TRÁCH: {assignee_name.upper()}"
+    tb_fr = draw.textbbox((0, 0), footer_right, font=f_footer_bold)
+    fr_w = tb_fr[2] - tb_fr[0]
+    draw.text((IMG_W - PAD_X - fr_w, curr_y), footer_right, font=f_footer_bold, fill=(148, 163, 184))
+
+    # Chuyển đổi RGB và xuất base64
     out_rgb = img.convert("RGB")
     buf = io.BytesIO()
     out_rgb.save(buf, format="PNG", optimize=True)
@@ -341,3 +485,6 @@ def render_report_image(
     data_url = f"data:image/png;base64,{b64_str}"
 
     return raw_bytes, data_url
+
+# Alias tương thích ngược
+render_report_to_image = render_report_image

@@ -1264,8 +1264,13 @@ export function ReportStudio({ initialTranscriptText = "" }: ReportStudioProps) 
           </div>
         </div>
 
-        {/* Nút làm mới bản nháp */}
+        {/* Người phụ trách & Nút làm mới bản nháp */}
         <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-xs text-blue-300 font-medium">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Phụ trách: <strong className="text-white font-semibold">Chiến Trần</strong></span>
+          </div>
+
           <button
             type="button"
             onClick={handleResetDraft}

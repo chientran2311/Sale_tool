@@ -33,6 +33,7 @@ class ReportGeneratePayload(BaseModel):
     mode: str = "report"
     report_date: str
     content: str
+    assignee: Optional[str] = "Chiến Trần"
 
 
 class ReportGenerateResponse(BaseModel):
@@ -49,6 +50,7 @@ class ReportSendPayload(BaseModel):
     summary_text: str
     image_data_url: Optional[str] = None
     chat_id: Optional[str] = None
+    assignee: Optional[str] = "Chiến Trần"
 
 
 class ReportSendResponse(BaseModel):
@@ -72,6 +74,7 @@ class ReportItem(BaseModel):
 class ReportComboGeneratePayload(BaseModel):
     report_date: str
     content: str
+    assignee: Optional[str] = "Chiến Trần"
 
 
 class ReportComboGenerateResponse(BaseModel):
@@ -88,6 +91,7 @@ class RenderImageSection(BaseModel):
 class RenderImagePayload(BaseModel):
     content: str
     title: Optional[str] = None
+    assignee: Optional[str] = "Chiến Trần"
     sections: Optional[List[RenderImageSection]] = None
 
 
@@ -137,7 +141,11 @@ async def generate_report_endpoint(payload: ReportGeneratePayload):
             raw_content=payload.content,
         )
 
-        _, data_url = render_report_image(summary_text, title=short_caption)
+        _, data_url = render_report_image(
+            summary_text,
+            title=short_caption,
+            assignee=payload.assignee or "Chiến Trần",
+        )
 
         return ReportGenerateResponse(
             mode=payload.mode,
@@ -158,13 +166,16 @@ async def generate_combo_endpoint(payload: ReportComboGeneratePayload):
             report_date=payload.report_date,
             raw_content=payload.content,
         )
+        assignee_name = payload.assignee or "Chiến Trần"
         _, rep_data_url = render_report_image(
             combo_res["report_text"],
             title=combo_res["report_caption"],
+            assignee=assignee_name,
         )
         _, plan_data_url = render_report_image(
             combo_res["plan_text"],
             title=combo_res["plan_caption"],
+            assignee=assignee_name,
         )
         return ReportComboGenerateResponse(
             report=ReportItem(
@@ -198,6 +209,7 @@ async def render_image_endpoint(payload: RenderImagePayload):
             payload.content,
             title=payload.title,
             sections=sections_dict,
+            assignee=payload.assignee or "Chiến Trần",
         )
         return RenderImageResponse(image_data_url=data_url)
     except Exception as e:
@@ -218,6 +230,7 @@ async def send_report_endpoint(payload: ReportSendPayload):
             photo_bytes, data_url = render_report_image(
                 payload.summary_text,
                 title=short_caption,
+                assignee=payload.assignee or "Chiến Trần",
             )
 
         tele_result = await send_photo_to_telegram(
