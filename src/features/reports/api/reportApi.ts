@@ -64,6 +64,34 @@ export async function processAndSendApi(
   return res.data;
 }
 
+export interface ReportComboItem {
+  mode: "plan" | "report";
+  report_date: string;
+  caption: string;
+  summary_text: string;
+  image_data_url: string;
+}
+
+export interface ReportComboGeneratePayload {
+  report_date: string;
+  content: string;
+}
+
+export interface ReportComboGenerateResponse {
+  report: ReportComboItem;
+  plan: ReportComboItem;
+}
+
+export async function generateComboReportApi(
+  payload: ReportComboGeneratePayload
+): Promise<ReportComboGenerateResponse> {
+  const res = await apiClient.post<ReportComboGenerateResponse>(
+    "/reports/generate-combo",
+    payload
+  );
+  return res.data;
+}
+
 export interface RenderImageSection {
   num: string;
   title: string;

@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .services.report_ai_service import generate_standardized_report
+from .services.report_ai_service import generate_standardized_report, generate_combo_report_and_plan
 from .services.report_image_service import render_report_image
 from .services.telegram_service import send_photo_to_telegram, delete_telegram_message
 
@@ -59,6 +59,24 @@ class ReportSendResponse(BaseModel):
     caption: str
     summary_text: Optional[str] = None
     image_data_url: Optional[str] = None
+
+
+class ReportItem(BaseModel):
+    mode: str
+    report_date: str
+    caption: str
+    summary_text: str
+    image_data_url: str
+
+
+class ReportComboGeneratePayload(BaseModel):
+    report_date: str
+    content: str
+
+
+class ReportComboGenerateResponse(BaseModel):
+    report: ReportItem
+    plan: ReportItem
 
 
 class RenderImageSection(BaseModel):
@@ -130,6 +148,42 @@ async def generate_report_endpoint(payload: ReportGeneratePayload):
         )
     except Exception as e:
         logger.error(f"Lỗi generate_report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/reports/generate-combo", response_model=ReportComboGenerateResponse)
+async def generate_combo_endpoint(payload: ReportComboGeneratePayload):
+    try:
+        combo_res = await generate_combo_report_and_plan(
+            report_date=payload.report_date,
+            raw_content=payload.content,
+        )
+        _, rep_data_url = render_report_image(
+            combo_res["report_text"],
+            title=combo_res["report_caption"],
+        )
+        _, plan_data_url = render_report_image(
+            combo_res["plan_text"],
+            title=combo_res["plan_caption"],
+        )
+        return ReportComboGenerateResponse(
+            report=ReportItem(
+                mode="report",
+                report_date=combo_res["report_date"],
+                caption=combo_res["report_caption"],
+                summary_text=combo_res["report_text"],
+                image_data_url=rep_data_url,
+            ),
+            plan=ReportItem(
+                mode="plan",
+                report_date=combo_res["plan_date"],
+                caption=combo_res["plan_caption"],
+                summary_text=combo_res["plan_text"],
+                image_data_url=plan_data_url,
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Lỗi generate_combo: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
